@@ -8,6 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 import numpy as np
 from .weather import fragility, scenarios, load_profile, failure_probability, multiday_scenarios
+from .decisions import validate_economics, cost_benefit, paired_evidence, public_guidance
 
 class Network:
     def __init__(self):
@@ -83,7 +84,7 @@ def simulate(net, scenario, hardened=(), playback=False):
     repair_remaining=np.zeros(net.m)
     ever_failed=np.zeros(net.m,dtype=bool)
     dt=scenario.get('dt_hours',1.)
-    peak_shed=0.; repairs=0
+    peak_shed=0.; repairs=0; outage_hours=0.; last_outage_end=0.
     probabilities=np.zeros(net.m)
     def state(hour,kind,new_trips=(),gust=None):
         nonlocal demand
@@ -105,7 +106,8 @@ def simulate(net, scenario, hardened=(), playback=False):
         gust=scenario['gust'][t]
         if recovery:
             # Crews work on a deterministic queue; unsafe local gusts pause work.
-            working=np.flatnonzero((~active) & (gust < 60))[:scenario['crews']]
+            priority=scenario.get('repair_priority',range(net.m))
+            working=np.array([i for i in priority if not active[i] and gust[i] < 60][:scenario['crews']],dtype=int)
             repair_remaining[working]-=dt
             restored=working[repair_remaining[working]<=0]
             active[restored]=True
@@ -116,6 +118,9 @@ def simulate(net, scenario, hardened=(), playback=False):
         if recovery:
             probabilities=failure_probability(gust,scenario['rain'][t],net.exposure,dt)*np.ones(net.m)
             probabilities[hard]=failure_probability(gust[hard],scenario['rain'][t][hard],net.exposure[hard],dt,True)
+        if 'failure_probability' in scenario:
+            # Supplied predictions are baseline one-hour conditional probabilities.
+            probabilities=1.-(1.-scenario['failure_probability'][t])**np.where(hard,.25,1.)
         weather=np.flatnonzero(active & (scenario['draws'][t]<probabilities))
         for i in weather:
             active[i]=False; causes[i]='weather'; ever_failed[i]=True
@@ -133,9 +138,14 @@ def simulate(net, scenario, hardened=(), playback=False):
         else: raise RuntimeError('Cascade failed to terminate')
         shed=float(net.load.sum()-demand.sum())
         peak_shed=max(peak_shed,shed)
+        if shed>1e-5:
+            outage_hours+=dt
+            last_outage_end=(t+1)*dt
         energy+=shed*dt
     return {'unserved_mwh':energy,'final_shed_mw':float(net.load.sum()-demand.sum()),
-            'peak_shed_mw':peak_shed,'repairs':repairs,'failed_lines':int(ever_failed.sum()),'cascade_trips':trips,'frames':frames,
+            'peak_shed_mw':peak_shed,'repairs':repairs,'outage_hours':outage_hours,
+            'recovery_hour':(last_outage_end+dt if outage_hours else 0.) if float(net.load.sum()-demand.sum())<=1e-5 else None,
+            'failed_lines':int(ever_failed.sum()),'cascade_trips':trips,'frames':frames,
             'failed_mask':ever_failed.astype(int).tolist()}
 
 def evaluate(net, bank, selected):
@@ -144,14 +154,19 @@ def evaluate(net, bank, selected):
 def mean_loss(results):
     return float(np.mean([r['unserved_mwh'] for r in results]))
 
-def select_reinforcement(net, bank, budget):
+def select_reinforcement(net, bank, budget, losses=None):
     """Greedy marginal expected unserved-energy reduction per cost, training only."""
-    selected=[]; remaining=budget; current=mean_loss(evaluate(net,bank,selected)); trace=[]
+    losses={} if losses is None else losses
+    def loss_for(lines):
+        key=tuple(sorted(lines))
+        if key not in losses: losses[key]=mean_loss(evaluate(net,bank,lines))
+        return losses[key]
+    selected=[]; remaining=budget; current=loss_for(selected); trace=[]
     while True:
         best=None
         for i in range(net.m):
             if i in selected or net.cost[i]>remaining: continue
-            loss=mean_loss(evaluate(net,bank,selected+[i])); gain=current-loss
+            loss=loss_for(selected+[i]); gain=current-loss
             item=(gain/net.cost[i],gain,-i,i,loss)
             if best is None or item[:3]>best[:3]: best=item
         if best is None or best[1]<=1e-8: break
@@ -172,29 +187,63 @@ def summarize(results):
         'blackout_probability':round(float(np.mean([r['final_shed_mw']>129.5 for r in results])),4),
         'peak_outage_probability':round(float(np.mean([r['peak_shed_mw']>129.5 for r in results])),4),
         'mean_repairs':round(float(np.mean([r['repairs'] for r in results])),3),
+        'mean_outage_hours':float(np.mean([r['outage_hours'] for r in results])),
+        'recovered_fraction':float(np.mean([r['recovery_hour'] is not None for r in results])),
+        'worst_decile_mean_mwh':float(np.sort(energy)[-max(1,int(np.ceil(n*.1))):].mean()),
         'mean_shed_mw':round(float(np.mean([r['final_shed_mw'] for r in results])),3),
         'mean_failed_lines':round(float(np.mean([r['failed_lines'] for r in results])),3),
         'mean_cascade_trips':round(float(np.mean([r['cascade_trips'] for r in results])),3),
         'line_failure_probability':np.mean([r['failed_mask'] for r in results],axis=0).round(4).tolist(),
         'losses_mwh':energy.round(3).tolist()}
 
-def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="legacy", hours=48, crews=2, weather=None):
+def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="legacy", hours=48, crews=2, weather=None,
+                   storm_type='single_peak', custom_lines=None, economics=None):
     import time
     started=time.perf_counter()
+    economics=validate_economics(economics)
+    ids={e['id']:i for i,e in enumerate(net.branches)}
+    if set(economics['asset_costs_gbp'])-set(ids): raise ValueError('Unknown asset cost IDs')
+    def investment_for(lines):
+        return sum(economics['asset_costs_gbp'].get(net.branches[i]['id'],float(net.cost[i])*economics['cost_per_unit_gbp']) for i in lines)
+    if custom_lines is not None:
+        if not isinstance(custom_lines,list) or any(not isinstance(i,str) or i not in ids for i in custom_lines):
+            raise ValueError('custom_lines must contain known branch IDs')
+        if len(set(custom_lines))!=len(custom_lines): raise ValueError('Duplicate custom line IDs')
+        if sum(net.cost[ids[i]] for i in custom_lines)>budget: raise ValueError('Custom plan exceeds the budget')
     if mode=='multiday':
-        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,24,hours,weather,crews)
-        heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews)
+        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,24,hours,weather,crews,storm_type)
+        heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews,storm_type)
     else:
         training=scenarios(net,intensity,seed ^ 0xA51C,24)
         heldout=scenarios(net,intensity,seed,samples)
-    selected,trace=select_reinforcement(net,training,budget)
+    # Single-asset consequence estimates and recommendations use only the training bank.
+    training_before=evaluate(net,training,[])
+    training_loss=mean_loss(training_before)
+    losses={():training_loss}
+    assets=[]
+    for i,e in enumerate(net.branches):
+        losses[(i,)]=mean_loss(evaluate(net,training,[i]))
+        gain=training_loss-losses[(i,)]
+        assets.append({'id':e['id'],'kind':'transformer' if i>=15 else 'line',
+                       'cost_units':int(net.cost[i]),'training_gain_mwh':gain,
+                       'training_gain_per_unit':gain/float(net.cost[i]),
+                       'economics':cost_benefit(gain,float(net.cost[i]),economics,investment_for([i]))})
+    selected,trace=select_reinforcement(net,training,budget,losses)
     risk=np.mean([(failure_probability if mode=='multiday' else fragility)(s['gust'],s['rain'] if s['rain'].ndim==2 else s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
+    if 'failure_probability' in training[0]: risk=np.mean([s['failure_probability'] for s in training],axis=(0,1))
     # Electrical topology baseline: initial absolute flow / cost (cost applied by ranking).
     intact=net.solve(tuple([True]*net.m),tuple(net.load))
     portfolios={'none':[], 'risk':ranked_portfolio(net,risk,budget),
                 'topology':ranked_portfolio(net,np.abs(intact['flows']),budget), 'optimized':selected}
+    if custom_lines is not None: portfolios['custom']=[ids[i] for i in custom_lines]
+    # Priority is a training-only heuristic for inspection/reset and damage repairs,
+    # not geographic crew positioning. Test its impact against the original queue.
+    priority=sorted(range(net.m),key=lambda i:(-(training_loss-losses[(i,)]),i))
+    if mode=='multiday': portfolios['prepared']=[]
+    def bank_for(key):
+        return [dict(s,repair_priority=priority) for s in heldout] if key=='prepared' else heldout
     result={}
-    raw={key:evaluate(net,heldout,lines) for key,lines in portfolios.items()}
+    raw={key:evaluate(net,bank_for(key),lines) for key,lines in portfolios.items()}
     # Typical stress example chosen by the unmitigated median loss, before viewing intervention outcome.
     order=np.argsort([r['unserved_mwh'] for r in raw['none']]); demo=int(order[len(order)//2])
     before=np.array([r['unserved_mwh'] for r in raw['none']])
@@ -204,13 +253,31 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
         result[key]={'selected':[net.branches[i]['id'] for i in lines],'spent':int(net.cost[lines].sum()) if lines else 0,
             'metrics':summarize(raw[key]),'paired_gain_mwh':round(float(paired.mean()),3),
             'paired_gain_standard_error_mwh':round(float(paired.std(ddof=1)/np.sqrt(samples)),3),
-            'playback':simulate(net,heldout[demo],lines,True)}
-    return {'config':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews},
+            'evidence':paired_evidence(before,after),
+            'economics':cost_benefit(float(paired.mean()),float(net.cost[lines].sum()) if lines else 0,economics,investment_for(lines)),
+            'playback':simulate(net,bank_for(key)[demo],lines,True)}
+        if key=='prepared': result[key]['economics']['scope']='Queue ordering only; dispatch/travel/staff costs excluded'
+    for row in assets:
+        row['training_failure_frequency']=float(np.mean([r['failed_mask'][ids[row['id']]] for r in training_before]))
+    return {'config':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews,
+                      'storm_type':storm_type,'custom_lines':custom_lines,'economics':economics},
         'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':weather if weather is not None else (load_profile() if mode=='legacy' else {'source':'Synthetic multi-day storm; illustrative route exposure'}),
+        'decisions':{'assets':sorted(assets,key=lambda a:-a['training_gain_per_unit']),
+                     'repair_priority':[net.branches[i]['id'] for i in priority],
+                     'repair_priority_method':'Descending single-asset hardening benefit on training scenarios; heuristic queue ordering only',
+                     'public':public_guidance(),
+                     'economics_scope':'Illustrative, undiscounted event-conditional avoided outage value; not electricity market prices or annual expected losses',
+                     'asset_scope':'Single-asset training estimates versus no action; do not add them together. Portfolio outcomes include interactions.'},
+        'replay':{'weather_source':'imported' if weather is not None else 'synthetic',
+                  'request':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'mode':mode,
+                             'hours':len(heldout[0]['gust']),'crews':crews,'storm_type':storm_type,
+                             'weather':weather,'economics':economics,'custom_lines':custom_lines},
+                  'comparison':'Same weather, failure draws, repair draws and median no-action playback scenario for all plans'},
         'demo_scenario_index':demo,'demo_selection':'Median unmitigated held-out loss; same scenario for every portfolio',
         'elapsed_seconds':round(time.perf_counter()-started,2),
         'model':{'power_flow':'Lossless DC, island-balanced active dispatch','weather':('Imported hourly exposures / uncalibrated hazard' if weather is not None else 'Synthetic / illustrative fragility'),
                  'recovery':('Limited crews; weather-gated repairs and hourly reconnection' if mode=='multiday' else 'No repairs'),
-                 'failure_model':('Hourly hazard, hardening rate multiplier 0.25' if mode=='multiday' else 'Hourly probability, hardening probability multiplier 0.25'),
+                 'failure_model':('Imported model one-hour conditional probabilities; assumed hardening hazard multiplier 0.25' if 'failure_probability' in heldout[0]
+                                  else 'Hourly hazard, hardening rate multiplier 0.25' if mode=='multiday' else 'Hourly probability, hardening probability multiplier 0.25'),
                  'reinforcement':'75% lower weather failure hazard in multi-day mode (probability in original mode); 30% higher illustrative rating',
                  'objective':'Greedy training mean unserved MWh reduction / budget unit; no optimality guarantee'}}
