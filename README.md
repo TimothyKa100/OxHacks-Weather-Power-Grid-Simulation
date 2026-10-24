@@ -1,8 +1,32 @@
 # GridGuard
 
-A runnable 24-hour hackathon prototype: synthetic storm → physical line failures → cascading outages → budgeted reinforcement → an honest held-out comparison.
+A storm crossing the Great Britain transmission grid, one hour at a time: wind → pylons → lines → power flow.
 
-Flask + NumPy backend, React 18 frontend. The electrical network is the real **IEEE 14-bus benchmark**, exported from **pandapower 3.5.6**, including all 20 branches and transformer taps. The weather, fragility curves, thermal ratings, hardening effects, costs and layout are **illustrative**. No forecast API or API key is needed.
+- **Grid:** 303 substations and 367 lines at 132–400 kV, built from [uk-grid-atlas](https://github.com/jacobwright32/uk-grid-atlas) OpenStreetMap data.
+- **Pylons:** each line's pylon count is its route length ÷ a typical span (400 kV 360 m, 275 kV 350 m, 132 kV 280 m), about 33,000 in total.
+- **Elevation:** every substation and a point every ~2 km along each real OSM route carry terrain height from EU-DEM (25 m). Local gust is scaled by the UK National Annex to BS EN 1991-1-4 altitude factor, `c_alt = 1 + 0.001 × elevation × (10 / tower height)^0.2`, with towers 50 m (400 kV), 46 m (275 kV) and 27 m (132 kV) tall. Pylons on high ground see stronger wind and fall more often.
+- **Failure:** each pylon has a lognormal fragility curve (50% chance of collapse within an hour at a 265 km/h gust at the pylon, β 0.12). Gust is sampled at 8 points along each route. One collapse takes the line out for the rest of the storm, so long, exposed lines are the vulnerable ones.
+- **Consequence:** a DC power flow reroutes power after every collapse. Lines pushed past their rating trip, and are reclosed the next hour. Substations left in islands without enough generation are disconnected.
+
+The dashboard runs one seeded storm (`POST /api/storm` with `peak_gust`, `hours`, `seed`) and plays it back on the map. Spans, fragility, ratings, dispatch and demand are illustrative, not utility data.
+
+**Real storm benchmark.** The "Real: Storm Darragh" tab replays 6–8 December 2024 with hourly Met Office UKV gusts, scaled from the weather model's terrain to each route's real height. It overlays the 2,101 real NGED power cuts that started in those 60 hours, and compares two things. Timing: modelled pylon risk per hour against real outage starts per hour. Place: each 0.25° area's peak gust against how far its outages rose above the area's normal daily rate. Those outages are distribution faults, not transmission pylons, so this tests where and when the risk lands, not how many things break. Rebuild with `python scripts/build_storm_benchmark.py /path/to/unplanned_outages.csv`.
+
+The older Monte Carlo / reinforcement experiment (`POST /api/experiment`, IEEE 14-bus or GB) is still in the backend but has no UI.
+
+## Great Britain network
+
+`data/gb_network.json` is generated, not hand-written. To rebuild it from a checkout of the atlas:
+
+```bash
+python scripts/build_gb_network.py ../uk-grid-atlas
+```
+
+The script clusters OSM line endpoints within 2 km into substations, merges parallel ways into multi-circuit branches, contracts series chains and keeps the largest connected component (about 88% of the atlas's route length). Stations with a stated capacity are attached to the nearest substation. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative. Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB experiment takes about 30 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
+
+## Multi-day prototype
+
+The dashboard now defaults to a 48-hour synthetic storm with probabilistic failures and limited repair crews. Import hourly weather JSON for historical exposure replay, or select the original five-hour demo. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
 
 ## Run the demo
 

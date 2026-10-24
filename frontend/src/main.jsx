@@ -1,119 +1,170 @@
-// React playback / Monte Carlo / mitigation workflow adapted from ICHack26.
-// MIT copyright (c) 2026 Louis Tanak; see third_party/ICHack26-LICENSE.
-import React, {useEffect, useId, useRef, useState} from 'react';
+// GB storm simulator: wind -> pylons -> lines -> DC power flow.
+// Workflow adapted from ICHack26 (MIT, Louis Tanak); see third_party/ICHack26-LICENSE.
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 
-const names={none:'No action',risk:'Weather risk baseline',topology:'Power-flow baseline',optimized:'GridGuard selection'};
-const number=(x,d=1)=>Number(x||0).toLocaleString('en-GB',{maximumFractionDigits:d,minimumFractionDigits:d});
-const percent=x=>`${number(100*x,1)}%`;
-function Icon({name,size=18}){const paths={bolt:'m13 2-9 12h7l-1 8 10-13h-7l1-7',play:'m8 5 12 7-12 7V5',pause:'M8 5v14M16 5v14',arrow:'M5 12h14m-5-5 5 5-5 5',cloud:'M7 17a5 5 0 1 1 1-10 6 6 0 0 1 11 3 4 4 0 0 1-1 8H7m2 2-1 2m6-2-1 2',shield:'m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6l8-4m-4 10 3 3 5-6',info:'M12 11v6m0-10v1M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',reset:'M3 10a9 9 0 1 1 2 8M3 3v7h7',grid:'M3 3h7v7H3V3m11 0h7v7h-7V3M3 14h7v7H3v-7m11 0h7v7h-7v-7'};return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]||paths.info}/></svg>}
+const fmt=(x,d=0)=>Number(x||0).toLocaleString('en-GB',{maximumFractionDigits:d,minimumFractionDigits:d});
+const pct=x=>x<.0001&&x>0?'<0.01%':`${fmt(100*x,x<.01?2:1)}%`;
+const KV_WIDTH={400:2.1,275:1.5,132:.9};
+const KV_COLOR={400:'#5da8bc',275:'#4b8a9f',132:'#3d6d7e'};
+const W=760,H=860,PAD=24;
+// Mirrors backend/storm.py so the inspector can show per-pylon odds at the current gust.
+const erf=x=>{const t=1/(1+.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return x>=0?y:-y};
+const cAlt=(ele,h)=>1+.001*ele*Math.pow(10/Math.max(h,10),.2);  // UK NA to BS EN 1991-1-4
+const pylonP=(g,m)=>g<=0?0:.5*(1+erf(Math.log(g/m.pylon_median_gust_kmh)/m.pylon_beta/Math.SQRT2));
 
-function NetworkView({network,frame,portfolio,selected,onSelect,risk,small=false,zoom=1}){
- const uid=useId().replaceAll(':','');
- const hard=new Set(portfolio?.selected||[]);const [hover,setHover]=useState(null);
- const pts=network.buses.map(b=>({x:75+b.x*650,y:15+b.y*410}));
- const label=hover||selected;const i=network.branches.findIndex(e=>e.id===label);
- const hour=frame?.hour||0;const cx=hour?(.1+.21*(hour-1))*650+75:110;
- return <div className={`network-canvas ${small?'small':''}`}>
- <svg viewBox="0 0 800 475" role="group" aria-label={`IEEE 14-bus network. ${frame?.kind||'Intact'}. Click a line or bus to inspect.`}>
-  <defs><pattern id={`dots-${uid}`} width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".8" fill="#233340"/></pattern><radialGradient id={`storm-${uid}`}><stop offset="0" stopColor="#7b95aa" stopOpacity=".23"/><stop offset="1" stopColor="#7b95aa" stopOpacity="0"/></radialGradient></defs>
-  <rect width="800" height="475" fill={`url(#dots-${uid})`}/>
-  <g transform={`translate(${400*(1-zoom)} ${237*(1-zoom)}) scale(${zoom})`}>
-   {hour>0&&<g className="storm"><ellipse cx={cx} cy={225} rx="220" ry="230" fill={`url(#storm-${uid})`}/><path d={`M${cx-75} 0Q${cx+100} 190 ${cx-30} 475`} fill="none" stroke="#879fb4" strokeDasharray="4 9" opacity=".22"/></g>}
-   {network.branches.map((e,idx)=>{const a=pts[e.from-1],b=pts[e.to-1];const status=frame?.status[idx]||'online';const down=status!=='online';const loading=frame?.loading[idx]||0;
-    const color=down?(status==='weather'?'#ed8792':'#ffb36b'):loading>1?'#ffbd73':hard.has(e.id)?'#b8e889':'#5da8bc';
-    return <g key={e.id} onMouseEnter={()=>setHover(e.id)} onMouseLeave={()=>setHover(null)} onClick={()=>onSelect(e.id)} className="line-hit" role="button" tabIndex="0" aria-label={`Inspect line ${e.id}, bus ${e.from} to ${e.to}, ${status}`} onKeyDown={ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();onSelect(e.id)}}}>
-     <title>{e.id} · {e.from} → {e.to} · {status} · {number(loading*100)}% loading · {percent(risk?.[idx]||0)} scenario failure rate</title>
-     {(selected===e.id||hover===e.id)&&<line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth="12" opacity=".13"/>}
-     <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={hard.has(e.id)?3.4:2.2} strokeDasharray={down?'5 6':undefined} opacity={down?.65:.95}/>
-     <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="18"/>
-     {!small&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2-7} textAnchor="middle" fill={color} className="edge-label">{e.id}</text>}
-     {down&&<text x={(a.x+b.x)/2} y={(a.y+b.y)/2+5} textAnchor="middle" fill={color} fontSize="16">×</text>}
+function GridMap({network,frame,trail,selected,onSelect,real,hour}){
+ const [hover,setHover]=useState(null);
+ const geo=useMemo(()=>{const xs=network.buses.map(b=>b.x),ys=network.buses.map(b=>b.y);
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const k=Math.min((W-2*PAD)/(x1-x0),(H-2*PAD)/(y1-y0));const ox=(W-k*(x1-x0))/2-x0*k,oy=(H-k*(y1-y0))/2-y0*k;
+  return {k,p:(x,y)=>[ox+x*k,oy+y*k],pts:network.buses.map(b=>[ox+b.x*k,oy+b.y*k])}},[network]);
+ const {pts,p,k}=geo;
+ const status=i=>frame?.status[i]||'online';
+ const hb=hover?.startsWith('B')?network.buses[Number(hover.slice(1))-1]:null;const hl=hover&&!hb?network.branches.find(e=>e.id===hover):null;
+ return <div className="map">
+  <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Great Britain transmission network">
+   <defs><radialGradient id="storm"><stop offset="0" stopColor="#9fb7cc" stopOpacity=".42"/><stop offset=".55" stopColor="#7b95aa" stopOpacity=".16"/><stop offset="1" stopColor="#7b95aa" stopOpacity="0"/></radialGradient></defs>
+   {trail.length>1&&<polyline points={trail.map(c=>p(...c).join(',')).join(' ')} fill="none" stroke="#7b95aa" strokeDasharray="3 6" opacity=".45"/>}
+   {real&&<RealLayers real={real} hour={hour} p={p}/>}
+   {frame?.storm&&<circle cx={p(...frame.storm)[0]} cy={p(...frame.storm)[1]} r={frame.storm_radius*k*2.4} fill="url(#storm)"/>}
+   {network.branches.map((e,i)=>{const s=status(i);const load=frame?.loading[i]||0;
+    // Real OSM route, with its ends pinned to the clustered substation positions.
+    const route=[pts[e.from-1],...e.geometry.slice(1,-1).map(c=>p(...c)),pts[e.to-1]].map(c=>c.join(',')).join(' ');
+    const color=s==='pylon'?'#ed8792':s==='overload'?'#ffb36b':load>.9?'#ffd27a':KV_COLOR[e.kv];const on=selected===e.id||hover===e.id;
+    return <g key={e.id} className="hit" onClick={()=>onSelect(e.id)} onMouseEnter={()=>setHover(e.id)} onMouseLeave={()=>setHover(null)}>
+     {on&&<polyline points={route} fill="none" stroke={color} strokeWidth="9" opacity=".25" strokeLinecap="round" strokeLinejoin="round"/>}
+     <polyline points={route} fill="none" stroke={color} strokeWidth={KV_WIDTH[e.kv]} strokeDasharray={s!=='online'?'3 4':undefined} strokeLinecap="round" strokeLinejoin="round"/>
+     <polyline points={route} fill="none" stroke="transparent" strokeWidth="8"/>
     </g>})}
-   {network.buses.map((b,idx)=>{const p=pts[idx];const gen=network.generators.some(g=>g.bus===b.id&&g.max_mw>0);const original=b.load_mw;const served=frame?.served_by_bus[idx]??original;const shed=original-served>.01;
-    return <g key={b.id} onClick={()=>onSelect(`B${b.id}`)} className="bus-hit" role="button" tabIndex="0" aria-label={`Inspect bus ${b.id}, ${number(served)} MW load served`} onKeyDown={e=>{if(e.key==='Enter'){onSelect(`B${b.id}`)}}}>
-     <title>Bus {b.id} · {gen?'Active generator · ':''}{number(served)} / {number(original)} MW load served</title>
-     {gen&&<circle cx={p.x} cy={p.y} r="22" fill="#b8e889" opacity=".08"/>}
-     <circle cx={p.x} cy={p.y} r={gen?14:11} fill={shed?'#422e36':'#12232b'} stroke={shed?'#ed8792':gen?'#b8e889':'#8aabb9'} strokeWidth="1.8"/>
-     <text x={p.x} y={p.y+4} textAnchor="middle" fill={shed?'#ffc3c9':'#e9f2f4'} fontSize="11" fontWeight="600">{b.id}</text>
-     {gen&&<text x={p.x} y={p.y-29} textAnchor="middle" fill="#b8e889" className="gen-label">GEN {b.id}</text>}
-    </g>})}
-  </g>
-  <text x="24" y="455" className="map-note">SCHEMATIC COORDINATES · NOT GEOGRAPHIC</text>
- </svg>
- {i>=0&&hover&&<div className="map-tooltip">{label} <span>{network.branches[i].from} ↔ {network.branches[i].to}</span> · {number((frame?.loading[i]||0)*100)}% load</div>}
+   {network.buses.map((b,i)=>{const [x,y]=pts[i];const served=frame?.served_by_bus[i]??b.load_mw;const dark=b.load_mw-served>.5;
+    return <circle key={b.id} className="hit" cx={x} cy={y} r={Math.max(1.6,Math.min(5.5,Math.sqrt(b.load_mw)/7))+(selected===`B${b.id}`?2.5:0)}
+     fill={dark?'#ed8792':'#9ab9c4'} opacity={dark?1:.7} stroke={selected===`B${b.id}`?'#fff':'none'}
+     onClick={()=>onSelect(`B${b.id}`)} onMouseEnter={()=>setHover(`B${b.id}`)} onMouseLeave={()=>setHover(null)}/>})}
+   {real&&<OutageDots real={real} hour={hour} p={p}/>}
+   {frame&&network.branches.map((e,i)=>{const f=frame.fallen_at[i];if(f==null)return null;const [x,y]=p(f[0],f[1]);
+    return <g key={e.id} className="hit" onClick={()=>onSelect(e.id)}><path d={`M${x-5} ${y-5}L${x+5} ${y+5}M${x+5} ${y-5}L${x-5} ${y+5}`} stroke="#ff6b7d" strokeWidth="2.4" strokeLinecap="round"/></g>})}
+  </svg>
+  {hl&&<div className="tip"><b>{hl.name||hl.id}</b> {hl.kv} kV · {fmt(hl.length_km)} km · {fmt(hl.pylons)} pylons · up to {fmt(hl.ele_max_m)} m</div>}
+  {hb&&<div className="tip"><b>Substation {hb.id}</b> {hb.kv} kV · {fmt(hb.ele_m)} m · {fmt(frame?.served_by_bus[hb.id-1]??hb.load_mw)} / {fmt(hb.load_mw)} MW supplied</div>}
  </div>
+}
+
+// Real storm: measured-model gust field and the outage feed's coverage, drawn under the grid.
+function RealLayers({real,hour,p}){
+ const [cw,ch]=real.weather.cell,gusts=hour>0?real.weather.gust_kmh[hour-1]:null;
+ const [vw,vh]=real.coverage.cell;const a=p(0,0),b=p(cw,ch),c=p(vw,vh);const w=b[0]-a[0],h=b[1]-a[1],cvw=c[0]-a[0],cvh=c[1]-a[1];
+ return <g aria-hidden="true">
+  {real.coverage.cells.map(([x,y],i)=>{const [px,py]=p(x,y);return <rect key={i} x={px-cvw/2} y={py-cvh/2} width={cvw} height={cvh} fill="#ffd27a" opacity=".045"/>})}
+  {gusts&&real.weather.nodes.map(([x,y],i)=>{const g=gusts[i];if(g==null||g<50)return null;const [px,py]=p(x,y);
+   return <rect key={i} x={px-w/2} y={py-h/2} width={w} height={h} fill={g>=110?'#e6f1f8':g>=90?'#a9c8de':'#6f93ad'} opacity={Math.min(.5,(g-50)/120)}/>})}
+ </g>
+}
+
+function OutageDots({real,hour,p}){
+ return <g aria-hidden="true">{real.outages.map(([x,y,h],i)=>{if(h>=hour)return null;const [px,py]=p(x,y);const fresh=hour-1-h<2;
+  return <circle key={i} cx={px} cy={py} r={fresh?2.6:1.5} fill="#ffd27a" opacity={fresh?.95:.35}/>})}</g>
+}
+
+// Hourly real outage starts (bars) vs modelled expected pylon collapses (line), both scaled to their own peak.
+function TimingChart({bench,hour}){
+ const n=bench.observed_per_hour.length,W2=1000,H2=46,mo=Math.max(...bench.observed_per_hour),mm=Math.max(...bench.modelled_per_hour)||1;
+ const line=bench.modelled_per_hour.map((v,i)=>`${(i+.5)/n*W2},${H2-v/mm*(H2-4)}`).join(' ');
+ return <svg className="timing" viewBox={`0 0 ${W2} ${H2}`} preserveAspectRatio="none" aria-label="Real outages per hour versus modelled risk">
+  {bench.observed_per_hour.map((v,i)=><rect key={i} x={i/n*W2+1} y={H2-v/mo*(H2-4)} width={W2/n-2} height={v/mo*(H2-4)} fill="#ffd27a" opacity={i<hour?.75:.3}/>)}
+  <polyline points={line} fill="none" stroke="#5da8bc" strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+  {hour>0&&<line x1={(hour-.5)/n*W2} x2={(hour-.5)/n*W2} y1="0" y2={H2} stroke="#fff" strokeWidth="1" vectorEffect="non-scaling-stroke" opacity=".6"/>}
+ </svg>
+}
+
+function Benchmark({run}){
+ const b=run.benchmark,s=run.storm,t=i=>new Date(s.timestamps[i]).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'});
+ const total=b.observed_per_hour.reduce((a,c)=>a+c,0);
+ return <div className="bench">
+  <p><b>{fmt(total)}</b> real {s.operator} outages started in these {b.observed_per_hour.length} hours <span className="muted">({fmt(s.reissued_dropped)} duplicate feed ids removed)</span>.</p>
+  <p><b>When:</b> real outages peaked {t(b.peak_hour_observed)}, modelled pylon risk peaked {t(b.peak_hour_modelled)} (UTC). Hour-by-hour correlation <b>r = {fmt(b.timing_correlation,2)}</b>.</p>
+  <p><b>Where:</b> in the windiest third of areas outages ran at <b>{fmt(b.rise_windiest_third,1)}×</b> their normal rate, in the calmest third <b>{fmt(b.rise_calmest_third,1)}×</b>. Rank correlation of peak gust vs. rise across {b.cells.length} areas: <b>ρ = {fmt(b.place_rank_correlation,2)}</b>.</p>
+  <p><b>Transmission:</b> the sim expects {b.modelled_collapses_in_coverage<.01?<>essentially no pylon collapses (<b>{b.modelled_collapses_in_coverage.toExponential(1)}</b>)</>:<><b>{fmt(b.modelled_collapses_in_coverage,2)}</b> pylon collapses</>} inside the {s.operator} area: Darragh's gusts stayed well below what topples a lattice tower. The blue risk line is scaled to its own peak to show its timing.</p>
+  <p className="muted">Outages are local distribution faults (trees on 11 kV lines etc.), not transmission pylons, so this checks timing and place, not counts. Outage data only covers {s.operator}'s licence areas (shaded). Gusts: Met Office UKV via Open-Meteo, adjusted from model terrain to real route height.</p>
+ </div>
+}
+
+function Inspector({network,frame,model,selected}){
+ const i=network.branches.findIndex(e=>e.id===selected);
+ if(i>=0){const e=network.branches[i];const g=frame?.gust_kmh[i]||0;const s=frame?.status[i]||'online';
+  return <div className="inspector"><span className="eyebrow">LINE {e.id}</span><h3>{e.name||`Substation ${e.from} ↔ ${e.to}`}</h3><dl>
+   <dt>Voltage</dt><dd>{e.kv} kV</dd><dt>Route length</dt><dd>{fmt(e.length_km,1)} km</dd>
+   <dt>Pylons</dt><dd>{fmt(e.pylons)} <small>{e.tower_height_m} m tall @ {e.span_m} m span</small></dd>
+   <dt>Terrain along route</dt><dd>{fmt(e.ele_mean_m)} m avg <small>/ {fmt(e.ele_max_m)} m max</small></dd>
+   <dt>Wind speed-up at highest pylon</dt><dd>×{fmt(cAlt(e.ele_max_m,e.tower_height_m),2)}</dd>
+   <dt>Status</dt><dd className={s!=='online'?'bad':''}>{s==='pylon'?`Pylon down at ${fmt(frame.fallen_at[i][2])} m elevation`:s==='overload'?'Tripped on overload':'In service'}</dd>
+   <dt>Peak gust on route</dt><dd>{fmt(g)} km/h</dd>
+   <dt>Worst-placed pylon falls this hour</dt><dd>{pct(model?pylonP(g,model):0)}</dd>
+   <dt>Any pylon falls this hour</dt><dd>{pct(frame?.line_failure_probability[i]||0)}</dd>
+   <dt>Power flow</dt><dd>{fmt(Math.abs(frame?.flows_mw[i]||0))} MW <small>/ {fmt(e.rating_mw)}</small></dd>
+  </dl></div>}
+ if(selected?.startsWith('B')){const b=network.buses[Number(selected.slice(1))-1];const served=frame?.served_by_bus[b.id-1]??b.load_mw;
+  return <div className="inspector"><span className="eyebrow">SUBSTATION {b.id}</span><h3>{b.kv} kV · {b.lat.toFixed(2)}°, {b.lon.toFixed(2)}°</h3><dl>
+   <dt>Elevation</dt><dd>{fmt(b.ele_m)} m</dd>
+   <dt>Demand</dt><dd>{fmt(b.load_mw)} MW</dd><dt>Supplied</dt><dd className={b.load_mw-served>.5?'bad':''}>{fmt(served)} MW</dd>
+   <dt>Lines</dt><dd>{network.branches.filter(e=>e.from===b.id||e.to===b.id).length}</dd></dl></div>}
+ return <div className="inspector"><p className="muted">Click a line or substation.</p></div>
 }
 
 function App(){
- const [config,setConfig]=useState({intensity:100,seed:26,samples:128,budget:5});
- const [result,setResult]=useState(null),[network,setNetwork]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [policy,setPolicy]=useState('optimized'),[view,setView]=useState('after'),[hour,setHour]=useState(3),[event,setEvent]=useState(999),[playing,setPlaying]=useState(false);
- const [selected,setSelected]=useState('L01'),[zoom,setZoom]=useState(1),[modal,setModal]=useState(null);const playTimer=useRef(null);
- const update=(key,value)=>setConfig(s=>({...s,[key]:value}));
- async function run(params=config){setBusy(true);setError('');setPlaying(false);try{
-  const response=await fetch('/api/experiment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
-  const data=await response.json();if(!response.ok)throw new Error(data.error||'Experiment failed');
-  setResult(data);setNetwork(data.network);setHour(3);setEvent(999);
- }catch(e){setError(e.message==='Failed to fetch'?'Cannot reach Flask. Start the backend on port 5001, then retry.':e.message)}finally{setBusy(false)}}
- useEffect(()=>{fetch('/api/network').then(r=>r.json()).then(setNetwork).catch(()=>{});run();return()=>clearInterval(playTimer.current)},[]);
- const actualPolicy=view==='before'?'none':policy;const portfolio=result?.portfolios[actualPolicy];
- const frames=portfolio?.playback.frames||[];
- const hourFrames=frames.filter(f=>f.hour===hour);const frame=hourFrames[view==='split'?hourFrames.length-1:Math.min(event,hourFrames.length-1)]||frames[0];
- useEffect(()=>{if(!playing)return;playTimer.current=setInterval(()=>{setHour(h=>{if(h>=5){setPlaying(false);return 5}return h+1});setEvent(999)},1100);return()=>clearInterval(playTimer.current)},[playing]);
- useEffect(()=>{function close(e){if(e.key==='Escape')setModal(null)}window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close)},[]);
- const before=result?.portfolios.none.metrics,after=result?.portfolios[policy].metrics;
- const gain=result?result.portfolios[policy].paired_gain_mwh:0;const improvement=before?.mean_unserved_mwh?gain/before.mean_unserved_mwh:0;
- const dirty=result&&JSON.stringify(config)!==JSON.stringify({intensity:result.config.intensity,seed:result.config.seed,samples:result.config.samples,budget:result.config.budget});
- const selectedIndex=network?.branches.findIndex(e=>e.id===selected)??-1;const edge=network?.branches[selectedIndex];
- const bus=selected.startsWith('B')?network?.buses.find(b=>b.id===Number(selected.slice(1))):null;
- const protectedSet=new Set(result?.portfolios[policy].selected||[]);
- function download(){const blob=new Blob([JSON.stringify(result,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`gridguard-seed-${result.config.seed}.json`;a.click();URL.revokeObjectURL(url)}
+ const [params,setParams]=useState({peak_gust:170,hours:36,seed:1});
+ const [run,setRun]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [hour,setHour]=useState(0),[playing,setPlaying]=useState(false),[selected,setSelected]=useState(null);
+ const [scenario,setScenario]=useState('synthetic'),[realSeed,setRealSeed]=useState(1);
+ const set=(k,v)=>setParams(p=>({...p,[k]:v}));
+ useEffect(()=>{const t=setTimeout(async()=>{setBusy(true);setError('');try{
+   const body=scenario==='synthetic'?params:{scenario,seed:realSeed};
+   const r=await fetch('/api/storm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   const data=await r.json();if(!r.ok)throw new Error(data.error);setRun(data);setHour(h=>Math.min(h,data.config.hours));
+  }catch(e){setError(e.message==='Failed to fetch'?'Cannot reach the backend on port 5001.':e.message)}finally{setBusy(false)}},250);return()=>clearTimeout(t)},[params,scenario,realSeed]);
+ const hours=run?.config.hours??params.hours;const real=run?.storm?run:null;
+ const timer=useRef(null);
+ useEffect(()=>{if(!playing)return;timer.current=setInterval(()=>setHour(h=>{if(h>=hours){setPlaying(false);return h}return h+1}),real?300:450);return()=>clearInterval(timer.current)},[playing,hours,real]);
+ const frame=run?.frames[Math.min(hour,run.frames.length-1)];
+ const trail=run?run.frames.slice(1,hour+1).map(f=>f.storm):[];
+ const down=frame?frame.status.filter(s=>s==='pylon').length:0,tripped=frame?frame.status.filter(s=>s==='overload').length:0;
+ const log=run?run.frames.slice(1,hour+1).flatMap(f=>f.events.filter(e=>e.type==='pylon').map(e=>({...e,hour:f.hour}))).reverse():[];
+ const name=id=>{const e=run.network.branches.find(b=>b.id===id);return e.name||id};
+ const toggle=()=>{if(!run)return;if(hour>=hours)setHour(0);setPlaying(p=>!p)};
+ const when=real&&hour>0?new Date(real.storm.timestamps[hour-1]).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC':null;
+ useEffect(()=>{const key=e=>{if(e.code==='Space'&&!['INPUT','SELECT','BUTTON'].includes(e.target.tagName)){e.preventDefault();toggle()}if(e.key==='Escape')setSelected(null)};
+  window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)});
  return <div className="app">
- <header className="topbar"><a className="brand" href="/" aria-label="GridGuard home"><span className="brand-icon"><Icon name="bolt" size={23}/></span>GridGuard<span className="lab-label">RESILIENCE LAB</span></a><nav><button className="nav-active" onClick={()=>setModal(null)}>Simulation</button><button onClick={()=>setModal('method')}>Methodology</button><button onClick={()=>setModal('sources')}>Sources & attribution</button></nav><span className="prototype"><span/>HACKATHON PROTOTYPE</span></header>
- <div className="workspace">
- <aside className="sidebar"><div className="side-title"><span className="eyebrow">EXPERIMENT  /  01</span><h2>Build your storm.</h2><p>Find the reinforcements that keep the lights on.</p></div>
-  <div className="section-label"><Icon name="grid" size={15}/> NETWORK BENCHMARK</div><div className="benchmark"><strong>IEEE 14-bus</strong><span>14 buses · 20 branches · 259 MW</span><small>Includes 5 transformer branches</small></div>
-  <div className="section-label"><Icon name="cloud" size={16}/> STORM SCENARIO</div>
-  <label className="field-label" htmlFor="intensity">Peak reference gust <strong>{config.intensity} <small>km/h</small></strong></label><input id="intensity" type="range" min="30" max="140" step="5" value={config.intensity} onChange={e=>update('intensity',Number(e.target.value))}/><div className="range-label"><span>30 · mild</span><span>140 · extreme</span></div>
-  <div className="weather-note"><span className="mini-dot"/>Synthetic moving storm<br/><small>Illustrative wind + rainfall exposure</small></div>
-  <div className="input-row"><label>Random seed<input aria-label="Random seed" type="number" min="0" max="2147483647" value={config.seed} onChange={e=>update('seed',e.target.value===''?'':Number(e.target.value))}/></label><label>MC scenarios<select aria-label="MC scenarios" value={config.samples} onChange={e=>update('samples',Number(e.target.value))}><option>64</option><option>128</option><option>256</option><option>512</option></select></label></div>
-  <div className="section-label"><Icon name="shield" size={16}/> REINFORCEMENT BUDGET</div><div className="budget-value"><strong>{config.budget}</strong><span>budget units</span></div><input aria-label="Reinforcement budget" type="range" min="0" max="12" value={config.budget} onChange={e=>update('budget',Number(e.target.value))}/><div className="range-label"><span>0 · no investment</span><span>12</span></div><p className="helper">Each branch costs 1–3 units. Hardening reduces storm trip probability by 75% and raises its assumed rating by 30%.</p>
-  <button className="run-button" disabled={busy} onClick={()=>run()}>{busy?<span className="spinner"/>:<Icon name="bolt"/>}{busy?'Evaluating portfolios…':'Run experiment'}{!busy&&<Icon name="arrow"/>}</button>
-  <p className="run-caption">{busy?'Training selection + held-out comparisons':dirty?'Settings changed · run to update results':result?`${result.config.samples} held-out storms · ${result.elapsed_seconds}s compute`:'Preparing the first experiment'}</p>
-  <div className="side-footer"><Icon name="info" size={16}/><span>Research demo. Synthetic weather and illustrative asset assumptions.</span></div>
- </aside>
- <main>
-  <div className="page-title"><div><div className="eyebrow">STORM RISK → CASCADE → RESILIENCE</div><h1>A small grid. A big what-if.</h1><p>Stress-test the network. Invest where it changes the outcome.</p></div><button className="export" disabled={!result||busy} onClick={download}><Icon name="download"/>Export run</button></div>
-  {error&&<div role="alert" className="error">{error}<button onClick={()=>run()}>Retry</button></div>}
-  {dirty&&<div className="pending">Controls have changed. Results below use the last completed run: {result.config.intensity} km/h · seed {result.config.seed} · budget {result.config.budget}.</div>}
-  <div className={`metrics ${busy?'computing':''}`}>
-   <Metric title="EXPECTED UNSERVED ENERGY" value={before?number(after.mean_unserved_mwh):'—'} unit="MWh" detail={before?`${number(before.mean_unserved_mwh)} without action`:'Evaluating storm scenarios'} icon="bolt"/>
-   <Metric title="ENERGY LOSS AVOIDED" value={before?`${gain<0?'−':''}${number(Math.abs(improvement)*100)}`:'—'} unit="%" detail={before?`${number(gain)} MWh per simulated storm`:'Compared with no action'} positive={gain>=0} icon="shield"/>
-   <Metric title="MAJOR OUTAGE PROBABILITY" value={before?number(after.blackout_probability*100):'—'} unit="%" detail={before?`${percent(before.blackout_probability)} without action`:'More than 50% final load shed'} icon="cloud"/>
-   <Metric title="PORTFOLIO INVESTMENT" value={result?result.portfolios[policy].spent:'—'} unit={`/ ${result?.config.budget??config.budget}`} detail={result?`${result.portfolios[policy].selected.length} branches reinforced`:'Selecting a portfolio'} icon="grid"/>
+  {run?<GridMap network={run.network} frame={frame} trail={real?[]:trail} selected={selected} onSelect={setSelected} real={real} hour={hour}/>:<div className="map loading">Loading grid…</div>}
+  <div className="readout">{when||`h${hour}`}{real&&<> · <span className="warn">{fmt(real.outages.filter(o=>o[2]<hour).length)} real outages</span></>} · <span className="bad">{down} down</span>{busy&&<span className="muted"> · simulating…</span>}<small>Lines © OpenStreetMap contributors (ODbL) via uk-grid-atlas</small></div>
+  {error&&<div className="error">{error}</div>}
+  <aside className="overlay controls">
+   <div className="brand">⚡ GridGuard <span className="muted">storm vs. the GB grid</span></div>
+   <div className="tabs" role="tablist"><button role="tab" aria-selected={scenario==='synthetic'} className={scenario==='synthetic'?'on':''} onClick={()=>{setScenario('synthetic');setHour(0)}}>Synthetic storm</button><button role="tab" aria-selected={scenario!=='synthetic'} className={scenario!=='synthetic'?'on':''} onClick={()=>{setScenario('darragh-2024');setHour(0)}}>Real: Storm Darragh</button></div>
+   {scenario==='synthetic'?<>
+    <label>Peak gust at sea level <b>{params.peak_gust} km/h</b><input type="range" min="60" max="250" step="5" value={params.peak_gust} onChange={e=>set('peak_gust',Number(e.target.value))}/></label>
+    <label>Storm duration<select value={params.hours} onChange={e=>set('hours',Number(e.target.value))}>{[12,24,36,48,72].map(h=><option key={h} value={h}>{h} hours</option>)}</select></label>
+    <label>Storm seed<div className="row"><input type="number" min="0" value={params.seed} onChange={e=>set('seed',Math.max(0,Number(e.target.value)||0))}/><button onClick={()=>set('seed',Math.floor(Math.random()*1e6))}>New storm</button></div></label>
+   </>:<>
+    <p className="howto">Replays Storm Darragh (6–8 Dec 2024) with real hourly gusts, then compares with the real power cuts recorded at the same time.</p>
+    <label>Failure-draw seed<div className="row"><input type="number" min="0" value={realSeed} onChange={e=>setRealSeed(Math.max(0,Number(e.target.value)||0))}/><button onClick={()=>setRealSeed(Math.floor(Math.random()*1e6))}>Re-roll</button></div></label>
+    {real&&<Benchmark run={real}/>}
+   </>}
+   <details className="howto"><summary>How lines fail</summary>
+    <p>Pylons per line = route length ÷ typical span (400 kV 360 m, 275 kV 350 m, 132 kV 280 m).{run&&<> {fmt(run.network.branches.reduce((s,e)=>s+e.pylons,0))} pylons in total.</>}</p>
+    <p>Each pylon has a {run?fmt(run.model.pylon_median_gust_kmh):250} km/h median collapse gust (lognormal, β {run?.model.pylon_beta??.12}). Gust is sampled every ~2 km along each real OSM route ({run?fmt(run.model.route_samples):'~6,000'} points) and raised with terrain height using the UK Eurocode altitude factor: 1 + 0.001 × elevation × (10 / tower height)^0.2, so a pylon at 400 m sees ~30% more wind than one at sea level. Terrain from EU-DEM (25 m). One pylon down takes the line out for the rest of the storm.</p>
+    <p>After each collapse a DC power flow reroutes power; lines pushed past their rating trip, and are reclosed the next hour.</p>
+    <p className="muted">Spans, fragility, ratings and demand are illustrative, not utility data.</p></details>
+  </aside>
+  <div className="overlay playback">
+   <button onClick={toggle} disabled={!run} aria-label={playing?'Pause':'Play'}>{playing?'❚❚':'▶'}</button>
+   <div className="scrub">{real&&<TimingChart bench={real.benchmark} hour={hour}/>}<input type="range" min="0" max={hours} value={hour} onChange={e=>{setPlaying(false);setHour(Number(e.target.value))}} aria-label="Hour"/></div>
+   <div className="status"><span>{when?<b>{when}</b>:<>Hour <b>{hour}</b> / {hours}</>}</span>{real&&<span><i className="key bars"/>real outages/hour <i className="key line"/>modelled pylon risk <i className="key gust1"/>gust 70+ <i className="key gust2"/>90+ <i className="key gust3"/>110+ km/h</span>}<span className="bad">{down} pylon{down===1?'':'s'} down</span><span className="warn">{tripped} tripped</span><span>{fmt(frame?.shed_mw||0)} MW off</span></div>
   </div>
-  <section className="simulation-layout">
-   <div className="network-panel"><div className="network-heading"><div><span className="live-dot"/><strong>Network digital twin</strong><span className="network-tag">DC POWER FLOW</span></div><div className="view-toggle"><button className={view==='before'?'active':''} onClick={()=>setView('before')}>No action</button><button className={view==='after'?'active':''} onClick={()=>setView('after')}>Reinforced</button><button className={view==='split'?'active':''} onClick={()=>setView('split')}>Compare</button></div></div>
-    <div className="map-topline"><span>{frame?`HOUR ${frame.hour} / 5`:'INTACT NETWORK'} <i/> {view==='before'?'No intervention':names[policy]}</span><div><button aria-label="Zoom out" onClick={()=>setZoom(z=>Math.max(.8,z-.15))}>−</button><button aria-label="Reset zoom" onClick={()=>setZoom(1)}>{Math.round(zoom*100)}%</button><button aria-label="Zoom in" onClick={()=>setZoom(z=>Math.min(1.6,z+.15))}>+</button></div></div>
-    {network?<div className={view==='split'?'split-view':''}>{view==='split'&&<div><span className="split-label">NO ACTION · END OF HOUR</span><NetworkView network={network} frame={result?.portfolios.none.playback.frames.filter(f=>f.hour===hour).at(-1)} portfolio={result?.portfolios.none} selected={selected} onSelect={id=>{setSelected(id);setView('before')}} risk={result?.portfolios.none.metrics.line_failure_probability} small zoom={zoom}/></div>}<div>{view==='split'&&<span className="split-label">{names[policy].toUpperCase()} · END OF HOUR</span>}<NetworkView network={network} frame={frame} portfolio={portfolio} selected={selected} onSelect={setSelected} risk={portfolio?.metrics.line_failure_probability} small={view==='split'} zoom={zoom}/></div></div>:<div className="map-skeleton">Loading IEEE 14-bus benchmark…</div>}
-    <div className="map-legend"><span><i className="normal"/>Online</span><span><i className="hardened"/>Reinforced</span><span><i className="weather"/>Weather trip</span><span><i className="overload"/>Cascade trip</span><span className="legend-hint">Click any branch or bus</span></div>
-    <div className="playback"><button className="play" disabled={!result} aria-label={playing?'Pause playback':'Play cascade'} onClick={()=>{if(hour===5)setHour(0);setPlaying(p=>!p)}}><Icon name={playing?'pause':'play'} size={16}/></button><div className="timeline"><div><strong>Cascade playback</strong><span>{frame?.kind||'Preparing scenario'} · {frame?number(frame.shed_mw):'0.0'} MW shed</span></div><input aria-label="Storm hour" type="range" min="0" max="5" value={hour} onChange={e=>{setPlaying(false);setHour(Number(e.target.value));setEvent(999)}}/><div className="timeline-labels"><span>Intact</span><span>Storm arrival</span><span>Hour 5</span></div></div><span className="hour-display">0{hour}<small> / 05</small></span></div>
-    <div className="events"><span>{view==='split'?'BOTH NETWORKS SHOW SETTLED END-OF-HOUR STATES':`WITHIN HOUR ${hour}`}</span>{view!=='split'&&hourFrames.map((f,idx)=><button key={idx} className={Math.min(event,hourFrames.length-1)===idx?'chosen':''} onClick={()=>{setEvent(idx);setPlaying(false)}}>{f.kind}{f.new_trips.length>0?` · ${f.new_trips.join(', ')}`:''}</button>)}</div>
-   </div>
-   <aside className="insights"><div className="insight-heading"><Icon name="shield" size={17}/><h3>Reinforcement plan</h3></div><label className="strategy-label" htmlFor="strategy">Selection strategy</label><select id="strategy" value={policy} onChange={e=>setPolicy(e.target.value)}><option value="optimized">GridGuard · marginal benefit</option><option value="risk">Baseline · weather risk</option><option value="topology">Baseline · power flow</option></select><p className="helper">{policy==='optimized'?'Greedy expected energy-loss reduction per cost. Selected on 24 training storms.':policy==='risk'?'Highest mean weather failure probability per cost, without cascade impact.':'Highest intact-network power flow per cost, without weather exposure.'}</p>
-    <div className="plan-lines">{result?.portfolios[policy].selected.length?result.portfolios[policy].selected.map(id=><button className={selected===id?'selected':''} key={id} onClick={()=>setSelected(id)}><span><Icon name="shield" size={14}/>{id}</span><small>{network.branches.find(e=>e.id===id).cost} units</small></button>):<p>{busy?'Searching affordable portfolios…':'No reinforcement selected'}</p>}</div>
-    <div className="inspection"><span className="eyebrow">ASSET INSPECTOR</span>{edge?<><h3>{edge.id} <span>Bus {edge.from} ↔ {edge.to}</span></h3><dl><div><dt>Status</dt><dd className={frame?.status[selectedIndex]!=='online'?'trip-status':''}>{frame?.status[selectedIndex]||'online'}</dd></div><div><dt>Active power</dt><dd>{number(Math.abs(frame?.flows_mw[selectedIndex]||0))} MW</dd></div><div><dt>Loading</dt><dd>{percent(frame?.loading[selectedIndex]||0)}</dd></div><div><dt>Assumed rating</dt><dd>{number(edge.rating_mw*(portfolio?.selected.includes(edge.id)?1.3:1))} MW</dd></div><div><dt>Local gust</dt><dd>{number(frame?.gust_kmh[selectedIndex]||0,0)} km/h</dd></div><div><dt>MC trip frequency</dt><dd>{percent(portfolio?.metrics.line_failure_probability[selectedIndex]||0)}</dd></div></dl><span className={`asset-badge ${portfolio?.selected.includes(edge.id)?'is-hardened':''}`}>{portfolio?.selected.includes(edge.id)?'REINFORCED':'STANDARD ASSET'} · {edge.cost} units</span></>:bus?<><h3>Bus {bus.id}</h3><dl><div><dt>Load demand</dt><dd>{number(bus.load_mw)} MW</dd></div><div><dt>Load served</dt><dd>{number(frame?.served_by_bus[bus.id-1]??bus.load_mw)} MW</dd></div><div><dt>Generation</dt><dd>{number(frame?.generation_mw[bus.id-1]||0)} MW</dd></div><div><dt>Island</dt><dd>{frame?.islands.find(c=>c.includes(bus.id))?.join(', ')||'Intact'}</dd></div></dl></>:<p>Choose an asset on the network.</p>}</div>
-    <div className="scenario-note"><Icon name="info" size={15}/><p>One shared held-out storm, chosen at the median unmitigated loss. Ensemble metrics above use all {result?.config.samples||config.samples} storms.</p></div>
-   </aside>
-  </section>
-  <section className="comparison"><div className="comparison-title"><div><span className="eyebrow">SAME STORMS. DIFFERENT DECISIONS.</span><h2>Does the investment hold up?</h2></div><span className="heldout-badge">HELD-OUT MONTE CARLO</span></div><div className="table-wrap"><table><thead><tr><th>Intervention</th><th>Spend</th><th>Expected loss <small>MWh ± SE</small></th><th>95th percentile <small>MWh</small></th><th>Major outage</th><th>Gain vs no action <small>MWh ± paired SE</small></th></tr></thead><tbody>{Object.keys(names).map(key=>{const r=result?.portfolios[key];return <tr key={key} className={key===policy?'highlight-row':''} onClick={()=>{if(key==='none')setView('before');else{setPolicy(key);setView('after')}}}><td><span className={`table-dot ${key}`}/>{names[key]}{key==='optimized'&&<small className="ours">MODEL</small>}</td><td>{r?`${r.spent} units`:'—'}</td><td>{r?<>{number(r.metrics.mean_unserved_mwh)} <small>± {number(r.metrics.standard_error_mwh)}</small></>:'—'}</td><td>{r?number(r.metrics.p95_unserved_mwh):'—'}</td><td>{r?percent(r.metrics.blackout_probability):'—'}</td><td className={r?.paired_gain_mwh>=0?'good':'bad'}>{key==='none'?'Reference':r?<>{number(r.paired_gain_mwh)} <small>± {number(r.paired_gain_standard_error_mwh)}</small></>:'—'}</td></tr>})}</tbody></table></div><div className="comparison-foot"><span>Major outage = &gt;50% demand shed at hour 5. Loss integrates settled load shed over five 1-hour windows.</span><button onClick={()=>setModal('method')}>Read model assumptions <Icon name="arrow" size={14}/></button></div></section>
-  <footer>GridGuard / IEEE 14-bus resilience experiments<span>Inspired by IC Hack 2026 WildFire · MIT attribution retained</span></footer>
- </main></div>
- {modal&&<div className="modal-backdrop" onClick={()=>setModal(null)}><section className="modal" role="dialog" aria-modal="true" aria-label={modal==='method'?'Model methodology':'Sources and attribution'} onClick={e=>e.stopPropagation()}><button className="modal-close" autoFocus aria-label="Close dialog" onClick={()=>setModal(null)}>×</button>{modal==='method'?<><span className="eyebrow">HOW THE EXPERIMENT WORKS</span><h2>A transparent model, with boundaries.</h2><h3>1 / Weather → physical failures</h3><p>A reproducible synthetic storm crosses a schematic IEEE 14-bus network. Shared storm severity correlates exposure; line failure draws are conditionally independent. No live forecast is used.</p><code>p = clip(0.65 × sigmoid((gust − 90) / 12) × exposure × (1 + 0.002 × rain), 0, 0.95)</code><p>Gust is km/h; rain is mm/h. This illustrative probability applies once per one-hour exposure window. Hardening multiplies it by 0.25.</p><h3>2 / Failures → cascades</h3><p>Lossless DC power flow recomputes after each simultaneous trip batch. Each connected island balances generation and demand. Islands with insufficient active generation shed load proportionally; loads remain shed for the event. Lines above their assumed active-power ratings trip immediately. There are no repairs.</p><p>IEEE 14-bus thermal ratings are not meaningful for this demo, so ratings are explicitly assumed: max(22 MW, 1.55 × |intact flow| + 8 MW). Hardening increases them by 30%.</p><h3>3 / Budget → measurable resilience</h3><p>Greedy selection maximizes marginal expected unserved-energy reduction per unit cost on 24 training storms. All four portfolios are evaluated on a separate shared held-out bank. Standard errors describe Monte Carlo sampling noise, not model validity. Greedy selection has no global optimality guarantee and can lose on held-out data.</p><h3>Limitations & next steps</h3><p>No reactive power, voltage collapse, transient dynamics, protection delays, restoration, geographic realism or calibrated fragility. Next: real asset coordinates, forecast ensemble adapters, AC validation and an independently verified GDELT event context layer. See the bundled documentation for the integration contract.</p></>:<><span className="eyebrow">PROVENANCE</span><h2>Built on open work.</h2><p><a href="https://github.com/ltanak/ICHack26" target="_blank" rel="noreferrer">IC Hack 2026 WildFire / ltanak/ICHack26 ↗</a></p><p>Architecture adapted from the Flask/NumPy simulation API and React simulation/mitigation component workflow. Upstream MIT copyright © 2026 Louis Tanak is retained in the project licence and third-party notice. GridGuard's electrical model, data adapters and interface are newly implemented.</p><p>Inspected upstream revision: <code>dac1afe03655081b6633ba3eeb07f45db86834aa</code></p><p><a href="https://pandapower.readthedocs.io/en/stable/networks/power_system_test_cases.html" target="_blank" rel="noreferrer">pandapower IEEE 14-bus benchmark ↗</a></p><p>Benchmark exported from pandapower case14. Bus loads, branch reactances, transformer taps and generation limits retain benchmark values. Schematic positions, line costs, asset exposures and thermal ratings are demo assumptions.</p><p>Weather: bundled synthetic five-window profile. No real storm forecasts or GDELT feed are connected.</p></>}</section></div>}
+  <aside className="overlay log"><span className="eyebrow">PYLON COLLAPSES</span>{log.length?log.map((e,i)=><button key={i} onClick={()=>setSelected(e.line)}><b>h{e.hour}</b> {name(e.line)} <small>{fmt(e.gust_kmh)} km/h · {fmt(e.ele_m)} m</small></button>):<p className="muted">None yet.</p>}</aside>
+  {run&&selected&&<div className="inspector-wrap"><button className="close" onClick={()=>setSelected(null)} aria-label="Close">×</button><Inspector network={run.network} frame={frame} model={run.model} selected={selected}/></div>}
  </div>
 }
-function Metric({title,value,unit,detail,positive=false,icon}){return <article className="metric"><div><span>{title}</span><Icon name={icon} size={15}/></div><strong className={positive?'positive':''}>{value}<small>{unit}</small></strong><p>{positive&&<span className="gain-arrow">↗ </span>}{detail}</p></article>}
 
 createRoot(document.getElementById('root')).render(<App/>);

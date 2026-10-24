@@ -25,6 +25,23 @@ Pandapower is BSD-3-Clause; its installed licence is retained as `third_party/pa
 
 Synthetic layout, exposure, costs, inferred ratings and hardening effects are GridGuard additions and must not be represented as original IEEE measurements.
 
+## Great Britain transmission network (uk-grid-atlas / OpenStreetMap)
+
+`data/gb_network.json` is built by `scripts/build_gb_network.py` from https://github.com/jacobwright32/uk-grid-atlas (`src/data/gb/transmission.json`, `stations.json`, `meta.json`; atlas data generated 2026-07-21). The atlas code is MIT, © 2026 Jacob Wright. The underlying power data is **© OpenStreetMap contributors, available under the Open Database Licence (ODbL)**: https://www.openstreetmap.org/copyright. `data/gb_network.json` is a derived database and is likewise offered under the ODbL; the map in the dashboard displays this attribution.
+
+Derived from OSM: line routes and voltage classes (132/275/400 kV), substation positions (way endpoints clustered at 2 km), circuit counts and route lengths, and generating-station locations, fuels and stated capacities. GridGuard additions, not OSM or National Grid data: per-km reactances, thermal ratings, reference dispatch, demand allocation (major urban areas plus a uniform base), hardening costs and storm exposure. The graph is not the operational GB network model: transformers, switching arrangements, embedded generation and interconnector flows are omitted.
+
+## Elevation (EU-DEM via OpenTopoData)
+
+Terrain heights for every substation and for route sample points every ~2 km (`ele_m`, `samples`, `ele_max_m`, `ele_mean_m` in `data/gb_network.json`) come from **EU-DEM v1.1** (25 m), produced by the Copernicus Land Monitoring Service with funding from the European Union, queried through the public OpenTopoData API (https://www.opentopodata.org/datasets/eudem/). Raw responses are cached in `data/gb_elevation_cache.json` so rebuilds need no network. Heights are of the terrain at the route sample point, not of individual surveyed pylon sites; sea and no-data points are treated as 0 m.
+
+## Storm Darragh benchmark (outages and weather)
+
+`data/storms/darragh_2024.json` is built by `scripts/build_storm_benchmark.py`.
+
+- **Outages:** NGED unplanned power cuts from the git-scraped feed jmcharter/nationalgrid-outage-history, as processed in the companion outage dataset (`processed/unplanned_outages.csv`). Only NGED's licence areas are covered. Start times are first-snapshot sightings (the scraper polled roughly every 20 min to 3 h that weekend). Incidents that restart at the same location within 4 h of another ending there are treated as the feed re-issuing an id and dropped (1,286 in the storm window, including a 1,102-incident batch at 22:03 UTC on 8 Dec 2024).
+- **Weather:** hourly 10 m wind gusts from the Met Office UKV model (`ukmo_seamless`) via the Open-Meteo historical forecast API, sampled on a 0.25° grid. Weather data by Open-Meteo.com, licensed CC BY 4.0. Met Office data © Crown copyright, Open Government Licence.
+
 ## Browser runtime dependencies
 
 The built browser app includes React, ReactDOM and Scheduler under their MIT licences, retained in `third_party/`. Other packages are installed from their upstream distributions with their own licences; the Python environment and Node dependency tree are excluded from the downloadable release.
