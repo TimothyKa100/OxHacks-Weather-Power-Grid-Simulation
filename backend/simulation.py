@@ -7,7 +7,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 import numpy as np
-from .weather import fragility, scenarios, load_profile
+from .weather import fragility, scenarios, load_profile, failure_probability, multiday_scenarios
 
 class Network:
     def __init__(self):
@@ -79,6 +79,12 @@ def simulate(net, scenario, hardened=(), playback=False):
     active=np.ones(net.m,dtype=bool); causes=['online']*net.m
     demand=net.load.copy(); frames=[]; energy=0.; trips=0
     limits=net.ratings*np.where(hard,1.30,1.)
+    recovery=scenario.get('recovery',False)
+    repair_remaining=np.zeros(net.m)
+    ever_failed=np.zeros(net.m,dtype=bool)
+    dt=scenario.get('dt_hours',1.)
+    peak_shed=0.; repairs=0
+    probabilities=np.zeros(net.m)
     def state(hour,kind,new_trips=(),gust=None):
         nonlocal demand
         solution=net.solve(tuple(active),tuple(demand.round(9)))
@@ -90,27 +96,47 @@ def simulate(net, scenario, hardened=(), playback=False):
                 'served_by_bus':demand.round(4).tolist(),'generation_mw':solution['generation'].round(4).tolist(),
                 'flows_mw':solution['flows'].round(4).tolist(),'loading':ratios.round(4).tolist(),
                 'status':causes.copy(),'islands':[[i+1 for i in c] for c in solution['islands']],
+                'failure_probability':np.asarray(probabilities).round(6).tolist(),
+                'timestamp':scenario.get('timestamps',[None]*len(scenario['gust']))[int(hour)-1] if hour else None,
                 'gust_kmh':gust.round(1).tolist() if gust is not None else [0.]*net.m})
         return ratios
     state(0,'Intact network')
     for t in range(len(scenario['gust'])):
         gust=scenario['gust'][t]
+        if recovery:
+            # Crews work on a deterministic queue; unsafe local gusts pause work.
+            working=np.flatnonzero((~active) & (gust < 60))[:scenario['crews']]
+            repair_remaining[working]-=dt
+            restored=working[repair_remaining[working]<=0]
+            active[restored]=True
+            for i in restored: causes[i]='online'
+            repairs+=len(restored)
+            demand=net.load.copy()  # attempt reconnection at each hourly boundary
         probabilities=fragility(gust,scenario['rain'][t],net.exposure)*np.where(hard,.25,1.)
+        if recovery:
+            probabilities=failure_probability(gust,scenario['rain'][t],net.exposure,dt)*np.ones(net.m)
+            probabilities[hard]=failure_probability(gust[hard],scenario['rain'][t][hard],net.exposure[hard],dt,True)
         weather=np.flatnonzero(active & (scenario['draws'][t]<probabilities))
-        for i in weather: active[i]=False; causes[i]='weather'
+        for i in weather:
+            active[i]=False; causes[i]='weather'; ever_failed[i]=True
+            if recovery: repair_remaining[i]=scenario['repair_hours'][t,i]
         loading=state(t+1,'Storm exposure',weather,gust)
         # Simultaneous overload trips then recompute until stable. At most m removals.
         for _ in range(net.m+1):
             overloaded=np.flatnonzero(active & (loading>1.+1e-8))
             if not len(overloaded): break
             trips+=len(overloaded)
-            for i in overloaded: active[i]=False; causes[i]='overload'
+            for i in overloaded:
+                active[i]=False; causes[i]='overload'; ever_failed[i]=True
+                if recovery: repair_remaining[i]=2.  # illustrative inspection/reset time
             loading=state(t+1,'Cascade trip',overloaded,gust)
         else: raise RuntimeError('Cascade failed to terminate')
-        energy+=float(net.load.sum()-demand.sum()) # settled loss x one-hour window
+        shed=float(net.load.sum()-demand.sum())
+        peak_shed=max(peak_shed,shed)
+        energy+=shed*dt
     return {'unserved_mwh':energy,'final_shed_mw':float(net.load.sum()-demand.sum()),
-            'failed_lines':int((~active).sum()),'cascade_trips':trips,'frames':frames,
-            'failed_mask':(~active).astype(int).tolist()}
+            'peak_shed_mw':peak_shed,'repairs':repairs,'failed_lines':int(ever_failed.sum()),'cascade_trips':trips,'frames':frames,
+            'failed_mask':ever_failed.astype(int).tolist()}
 
 def evaluate(net, bank, selected):
     return [simulate(net,s,selected) for s in bank]
@@ -144,19 +170,25 @@ def summarize(results):
     return {'mean_unserved_mwh':round(float(energy.mean()),3),'p95_unserved_mwh':round(float(np.quantile(energy,.95)),3),
         'standard_error_mwh':round(float(energy.std(ddof=1)/np.sqrt(n)),3),
         'blackout_probability':round(float(np.mean([r['final_shed_mw']>129.5 for r in results])),4),
+        'peak_outage_probability':round(float(np.mean([r['peak_shed_mw']>129.5 for r in results])),4),
+        'mean_repairs':round(float(np.mean([r['repairs'] for r in results])),3),
         'mean_shed_mw':round(float(np.mean([r['final_shed_mw'] for r in results])),3),
         'mean_failed_lines':round(float(np.mean([r['failed_lines'] for r in results])),3),
         'mean_cascade_trips':round(float(np.mean([r['cascade_trips'] for r in results])),3),
         'line_failure_probability':np.mean([r['failed_mask'] for r in results],axis=0).round(4).tolist(),
         'losses_mwh':energy.round(3).tolist()}
 
-def run_experiment(net, intensity=100, seed=26, samples=128, budget=5):
+def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="legacy", hours=48, crews=2, weather=None):
     import time
     started=time.perf_counter()
-    training=scenarios(net,intensity,seed ^ 0xA51C,24)
-    heldout=scenarios(net,intensity,seed,samples)
+    if mode=='multiday':
+        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,24,hours,weather,crews)
+        heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews)
+    else:
+        training=scenarios(net,intensity,seed ^ 0xA51C,24)
+        heldout=scenarios(net,intensity,seed,samples)
     selected,trace=select_reinforcement(net,training,budget)
-    risk=np.mean([fragility(s['gust'],s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
+    risk=np.mean([(failure_probability if mode=='multiday' else fragility)(s['gust'],s['rain'] if s['rain'].ndim==2 else s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
     # Electrical topology baseline: initial absolute flow / cost (cost applied by ranking).
     intact=net.solve(tuple([True]*net.m),tuple(net.load))
     portfolios={'none':[], 'risk':ranked_portfolio(net,risk,budget),
@@ -173,10 +205,12 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5):
             'metrics':summarize(raw[key]),'paired_gain_mwh':round(float(paired.mean()),3),
             'paired_gain_standard_error_mwh':round(float(paired.std(ddof=1)/np.sqrt(samples)),3),
             'playback':simulate(net,heldout[demo],lines,True)}
-    return {'config':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24},
-        'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':load_profile(),
+    return {'config':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews},
+        'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':weather if weather is not None else (load_profile() if mode=='legacy' else {'source':'Synthetic multi-day storm; illustrative route exposure'}),
         'demo_scenario_index':demo,'demo_selection':'Median unmitigated held-out loss; same scenario for every portfolio',
         'elapsed_seconds':round(time.perf_counter()-started,2),
-        'model':{'power_flow':'Lossless DC, island-balanced active dispatch','weather':'Synthetic / illustrative fragility',
-                 'reinforcement':'75% lower weather-trip probability and 30% higher illustrative thermal rating',
+        'model':{'power_flow':'Lossless DC, island-balanced active dispatch','weather':('Imported hourly exposures / uncalibrated hazard' if weather is not None else 'Synthetic / illustrative fragility'),
+                 'recovery':('Limited crews; weather-gated repairs and hourly reconnection' if mode=='multiday' else 'No repairs'),
+                 'failure_model':('Hourly hazard, hardening rate multiplier 0.25' if mode=='multiday' else 'Hourly probability, hardening probability multiplier 0.25'),
+                 'reinforcement':'75% lower weather failure hazard in multi-day mode (probability in original mode); 30% higher illustrative rating',
                  'objective':'Greedy training mean unserved MWh reduction / budget unit; no optimality guarantee'}}

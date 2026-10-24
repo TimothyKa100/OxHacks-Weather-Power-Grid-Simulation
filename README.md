@@ -4,6 +4,10 @@ A runnable 24-hour hackathon prototype: synthetic storm → physical line failur
 
 Flask + NumPy backend, React 18 frontend. The electrical network is the real **IEEE 14-bus benchmark**, exported from **pandapower 3.5.6**, including all 20 branches and transformer taps. The weather, fragility curves, thermal ratings, hardening effects, costs and layout are **illustrative**. No forecast API or API key is needed.
 
+## Multi-day prototype
+
+The dashboard now defaults to a 48-hour synthetic storm with probabilistic failures and limited repair crews. Import hourly weather JSON for historical exposure replay, or select the original five-hour demo. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
+
 ## Run the demo
 
 Requires Python **3.11–3.14**. Python 3.13.5 was tested on Windows. The release ZIP includes the built frontend, so Node is optional for running it.
