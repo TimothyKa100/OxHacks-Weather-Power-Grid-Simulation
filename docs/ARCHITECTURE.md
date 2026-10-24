@@ -21,7 +21,7 @@ flowchart LR
 | Flask `app.py` JSON routes | `backend/app.py`, same Flask/Python service boundary, bounded validated experiment requests |
 | `create_grid`, `step`, `run_simulation` | `Network`, `solve`, `simulate`; real branch topology and electrical equations replace spatial fire propagation |
 | Monte Carlo burn-count aggregation | Shared weather draws, per-line trip frequencies, energy-loss distributions and paired comparisons |
-| React `WildfireSimulation` controls/play state | React scenario controls, SVG electrical schematic, hourly and within-hour playback |
+| React `WildfireSimulation` controls/play state | React storm picker, SVG map of the GB grid on a UK outline, continuous playback |
 | `WildfireMitigation` zones then MC rerun | Discrete branch reinforcement, heterogeneous costs and marginal benefit selection |
 | Next frontend and cross-origin Flask calls | React/Vite build served by Flask; relative API paths and optional Vite dev proxy |
 
@@ -31,9 +31,13 @@ The interface is implemented anew around grid decisions. Keeping NumPy and a sma
 
 `GET /api/health` reports model and synthetic weather status.
 
-`GET /api/network` returns benchmark data plus explicitly assumed ratings and schematic coordinates.
+`GET /api/network?name=ieee14|gb` returns network data plus explicitly assumed ratings and map coordinates.
 
-`POST /api/experiment` accepts JSON integer fields:
+`GET /api/storms` lists the real storms built by `scripts/build_storm_benchmark.py` (id, name, start, hours, outage feeds, outage count, peak gust) and returns the GB network the map draws.
+
+`POST /api/storm` runs one seeded storm on the GB network: `{"scenario":"synthetic","peak_gust":160,"hours":36,"seed":1}` (peak gust 60–250 km/h, 6–72 hours), or `{"scenario":"<storm id>","seed":1}` to replay a real storm. It returns hourly `frames` (line status `online`/`pylon`/`overload`, where each pylon fell, flows, served load); real storms also return the hourly gust grid, the real outages, outage-feed coverage and a `benchmark` comparing timing and place.
+
+`POST /api/experiment` accepts JSON integer fields (plus `network`, `mode`, `hours`, `crews`, `weather`, `storm_type`, `custom_lines` and `economics`; see `docs/MULTIDAY.md` and `docs/DECISION_SUPPORT.md`):
 
 ```json
 {"intensity":100,"seed":26,"samples":128,"budget":5}

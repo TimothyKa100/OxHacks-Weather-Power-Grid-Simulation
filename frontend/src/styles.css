@@ -13,25 +13,26 @@ body {
 }
 
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 16px;
-  gap: 16px;
+  gap: 14px;
 }
+/* The map takes whatever height the panel leaves, so the page fits one screen. */
 .map-wrap {
-  flex: 1;
+  flex: 1 1 0;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 0;
+  min-height: 260px;
 }
 .uk-map {
   display: block;
-  height: calc(100vh - 170px);
-  min-height: 360px;
+  height: 100%;
   max-width: 100%;
 }
 .land {
@@ -40,12 +41,9 @@ body {
   stroke-width: 1;
   stroke-linejoin: round;
 }
-.storm {
-  pointer-events: none;
-}
 .bus {
   stroke: #0d0f12;
-  stroke-width: 2;
+  stroke-width: 0.6;
 }
 
 .panel {
@@ -54,13 +52,30 @@ body {
   align-items: center;
   gap: 8px;
   text-align: center;
-  max-width: 480px;
+  width: 100%;
+  max-width: 520px;
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.controls select {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid #3a434f;
+  background: #1c2128;
+  color: #f0efec;
 }
 .simulate {
   font: inherit;
   font-size: 16px;
   font-weight: 600;
-  padding: 12px 36px;
+  padding: 11px 32px;
   border: 0;
   border-radius: 999px;
   background: #3987e5;
@@ -70,11 +85,13 @@ body {
 .simulate:hover:not(:disabled) {
   background: #2a78d6;
 }
-.simulate:disabled {
+.simulate:disabled,
+.controls select:disabled {
   opacity: 0.6;
   cursor: default;
 }
-.simulate:focus-visible {
+.simulate:focus-visible,
+.controls select:focus-visible {
   outline: 2px solid #f0efec;
   outline-offset: 3px;
 }
@@ -89,6 +106,36 @@ body {
   display: block;
   height: 100%;
   background: #3987e5;
+}
+.timing {
+  margin: 0;
+  width: 100%;
+  max-width: 320px;
+}
+.timing svg {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+.timing figcaption {
+  font-size: 11px;
+  color: #898781;
+  margin-top: 3px;
+}
+.key {
+  display: inline-block;
+  width: 10px;
+  margin: 0 3px 0 8px;
+  vertical-align: middle;
+}
+.key.bars {
+  height: 8px;
+  background: #ffd27a;
+  opacity: 0.8;
+}
+.key.line {
+  height: 2px;
+  background: #5da8bc;
 }
 .visually-hidden {
   position: absolute;
@@ -109,6 +156,14 @@ body {
   font-size: 12px;
   color: #898781;
 }
+.note.comparison {
+  line-height: 1.5;
+}
 .note.error {
   color: #ef7a7a;
+}
+.credit {
+  margin: 0;
+  font-size: 10px;
+  color: #5f6670;
 }

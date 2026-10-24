@@ -1,13 +1,15 @@
 """Replay a real storm (measured-model gusts) on the grid and compare with real outages.
 
-The outage record is distribution-network faults from one operator's feed, so it
-cannot validate transmission pylon counts. It can test whether the simulation's
+The outage record is distribution-network faults from the operators' feeds that covered
+the storm, so it cannot validate transmission pylon counts. It can test whether the simulation's
 wind-driven risk lands in the right hours and places:
 
 - timing: modelled expected pylon collapses per hour (inside the feed's coverage)
   vs. real outage starts per hour;
 - place: per 0.25 degree cell, storm peak gust vs. how far outages rose above that
-  cell's normal daily rate (normal rate from the rest of the record).
+  cell's normal daily rate (normal rate from the rest of each feed's record).
+
+Storms are built by scripts/build_storm_benchmark.py and listed in data/storms/index.json.
 """
 import json
 import warnings
@@ -18,13 +20,15 @@ import numpy as np
 
 from .storm import GUSTINESS, altitude_factor, model_info, route_samples, simulate_gusts
 
-STORMS = {'darragh-2024': 'data/storms/darragh_2024.json'}
 ROOT = Path(__file__).resolve().parents[1]
+_INDEX = ROOT/'data/storms/index.json'
+STORM_LIST = json.loads(_INDEX.read_text(encoding='utf-8')) if _INDEX.exists() else []
+STORMS = {s['id']: s['file'] for s in STORM_LIST}
 
 
 @lru_cache(maxsize=4)
 def load_storm(storm_id):
-    return json.loads((ROOT/STORMS[storm_id]).read_text())
+    return json.loads((ROOT/STORMS[storm_id]).read_text(encoding='utf-8'))
 
 
 class Projection:
@@ -86,7 +90,12 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
 
     # Place: cells with a meaningful normal rate; storm excess vs peak gust at the cell centre.
     step = storm['baseline']['cell']; days = hours/24
-    base = {(cx, cy): n for cx, cy, n in storm['baseline']['counts']}
+    # Normal rate per cell, summed over the feeds that covered the storm (each over its own span).
+    base, expected_normal = {}, {}
+    for feed in storm['baseline']['feeds']:
+        for cx, cy, n in feed['counts']:
+            base[(cx, cy)] = base.get((cx, cy), 0)+n
+            expected_normal[(cx, cy)] = expected_normal.get((cx, cy), 0.)+n/feed['days']*days
     count = {}
     for lon, lat, *_ in storm['outages']:
         key = (int(np.floor(lon/step)), int(np.floor(lat/step))); count[key] = count.get(key, 0)+1
@@ -95,7 +104,7 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
         peak = np.nanmax(gust_grid, axis=0)
     cells = []
     for (cx, cy), n in base.items():
-        expected = n/storm['baseline']['days']*days
+        expected = expected_normal[(cx, cy)]
         if n < 20: continue  # too few normal-day outages to judge a rise
         c_lon, c_lat = (cx+.5)*step, (cy+.5)*step
         gust = bilinear(peak, lons, lats, np.array([c_lon]), np.array([c_lat]))[0]
@@ -114,7 +123,7 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     cell_w, cell_h = step*proj.k, step/(proj.y1-proj.y0)
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
     return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames,
-            'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'sources': storm['sources'],
+            'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],
                         'gust_kmh': [[None if np.isnan(gust_grid[t, j, i]) else round(float(gust_grid[t, j, i])) for j, i in nodes]

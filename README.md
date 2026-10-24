@@ -8,11 +8,13 @@ A storm crossing the Great Britain transmission grid, one hour at a time: wind �
 - **Failure:** each pylon has a lognormal fragility curve (50% chance of collapse within an hour at a 265 km/h gust at the pylon, β 0.12). Gust is sampled at 8 points along each route. One collapse takes the line out for the rest of the storm, so long, exposed lines are the vulnerable ones.
 - **Consequence:** a DC power flow reroutes power after every collapse. Lines pushed past their rating trip, and are reclosed the next hour. Substations left in islands without enough generation are disconnected.
 
-The dashboard runs one seeded storm (`POST /api/storm` with `peak_gust`, `hours`, `seed`) and plays it back on the map. Spans, fragility, ratings, dispatch and demand are illustrative, not utility data.
+The app is a map of the UK with the grid on it, a storm picker and a **Simulate** button. Each run is one seeded storm (`POST /api/storm`) played back as a continuous animation. The storm glides across the map, lines fade to dashed red when a pylon falls (marked with a cross where it fell) or orange when they trip on overload, and substations losing supply turn red. Spans, fragility, ratings, dispatch and demand are illustrative, not utility data.
 
-**Real storm benchmark.** The "Real: Storm Darragh" tab replays 6–8 December 2024 with hourly Met Office UKV gusts, scaled from the weather model's terrain to each route's real height. It overlays the 2,101 real NGED power cuts that started in those 60 hours, and compares two things. Timing: modelled pylon risk per hour against real outage starts per hour. Place: each 0.25° area's peak gust against how far its outages rose above the area's normal daily rate. Those outages are distribution faults, not transmission pylons, so this tests where and when the risk lands, not how many things break. Rebuild with `python scripts/build_storm_benchmark.py /path/to/unplanned_outages.csv`.
+**Real storms vs. real outages.** Besides a synthetic storm, the picker replays eight named storms with hourly Met Office UKV gusts, scaled from the weather model's terrain to each route's real height: Bert (Nov 2024), Darragh (Dec 2024), Éowyn (Jan 2025), Amy (Oct 2025), Claudia (Nov 2025), Bram (Dec 2025), Goretti (Jan 2026) and Austen (Oct 2026). Real power cuts from `data/outages/unplanned_outages.csv` appear on the map as they started. A strip under the button compares the timing of real outage starts per hour with modelled pylon risk per hour, and a one-line summary compares place: each 0.25° area's peak gust against how far its outages rose above that area's normal daily rate. Outages come from the NGED feed (from May 2024) and the UKPN feed (from late October 2025), so only those licence areas have data; they are shaded on the map. They are distribution faults, not transmission pylons, so this tests where and when the risk lands, not how many things break. These are the named storms with a clear outage spike in the CSV; Ashley, Conall, Floris, Benjamin, Chandra and Dave barely register and are left out.
 
-The older Monte Carlo / reinforcement experiment (`POST /api/experiment`, IEEE 14-bus or GB) is still in the backend but has no UI.
+Rebuild the storms with `python scripts/build_storm_benchmark.py` (default CSV `data/outages/unplanned_outages.csv`; `--storm ID` for one). Weather comes from the Open-Meteo historical forecast API, cached per storm in `data/storms/.cache/` and paced to stay under its free-tier limit of 5,000 location-calls an hour, so a full rebuild takes about 90 minutes. The script writes `data/storms/<id>.json` and `data/storms/index.json`, which `GET /api/storms` lists.
+
+The Monte Carlo reinforcement experiment, with mitigation planning and grid damage/repair logic, is in the backend (`POST /api/experiment`, IEEE 14-bus or GB) but has no UI.
 
 ## Great Britain network
 
@@ -24,13 +26,13 @@ python scripts/build_gb_network.py ../uk-grid-atlas
 
 The script clusters OSM line endpoints within 2 km into substations, merges parallel ways into multi-circuit branches, contracts series chains and keeps the largest connected component (about 88% of the atlas's route length). Stations with a stated capacity are attached to the nearest substation. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative. Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB experiment takes about 30 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
 
-## Multi-day prototype
+## Multi-day damage and recovery (API)
 
-The dashboard now defaults to a 48-hour synthetic storm with probabilistic failures and limited repair crews. Import hourly weather JSON for historical exposure replay, or select the original five-hour demo. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
+`POST /api/experiment` with `"mode": "multiday"` runs a 1–72 hour storm with probabilistic failures, weather-gated repairs by limited crews, and hourly reconnection. It accepts imported hourly weather JSON for historical exposure replay; `"mode": "legacy"` is the original five-hour experiment. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
 
-## Decision support prototype
+## Mitigations (API)
 
-Residents receive general preparedness guidance. Organisations can compare repair priorities, choose suggested or custom reinforcements, and rerun the same storm. Editable financial assumptions show avoided-loss/cost ratios and break-even event counts. Three synthetic windstorm presets support stress tests. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
+The same endpoint compares reinforcement plans on shared storms: no action, two simple baselines, the greedy GridGuard selection, an optional `custom_lines` plan and, in multi-day mode, a `prepared` plan that reorders the repair queue. Each plan gets paired evidence and an illustrative cost/benefit from editable `economics` assumptions; `storm_type` picks one of three windstorm presets. On the GB grid, only the 24 most frequently failing lines are evaluated individually. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
 
 ## Run the demo
 
@@ -74,16 +76,17 @@ cd ..
 
 For hot reload, run Flask in one terminal and `cd frontend; npm run dev` in another. Open Vite's printed localhost URL. Its `/api` proxy targets Flask on port 5001. The production build is served directly by Flask, avoiding cross-origin configuration and a second runtime.
 
-## A 90-second demo
+## A one-minute demo
 
-1. Select **Original 5-hour demo** and use **100 km/h, seed 26, 128 scenarios, 5 budget units**. Click **Run experiment** if you changed anything.
-2. Look at the four summary cards, then choose **No action** and move the hour slider from intact through the storm. Dashed pink branches failed in weather; orange branches tripped in a cascade.
-3. Click **Reinforced** or **Compare**. Green branches are the chosen investments. Click a line to inspect power, loading, local gust and Monte Carlo trip frequency; click a bus to inspect generation, shed load and island membership.
-4. Use **Play cascade** for hourly playback. Within-hour event buttons expose the weather hit and subsequent simultaneous overload trip batches individually. Playback uses the same scenario for all portfolios: the median unmitigated held-out loss, selected without inspecting intervention performance.
-5. Switch between **GridGuard**, **weather risk**, and **power-flow** selection. The comparison table always retains all four portfolios, including no action.
-6. Reduce the budget to zero, change intensity or seed, and rerun. A banner marks changed controls so old results cannot be mistaken for a new run. **Export run** downloads the complete JSON, including settings, portfolios, uncertainty estimates and playback frames.
+1. Press **Simulate** with **Synthetic storm** selected. Each press uses a new seed, so the pylons that fall change from run to run.
+2. Pick **Storm Darragh · Dec 2024** and press **Simulate**. Measured gusts sweep in from the south-west and about 2,100 real power cuts appear across NGED's areas. Darragh's gusts stay well below what topples a lattice tower, so few or no pylons fall.
+3. Watch the strip under the button: yellow bars are real outage starts per hour, the blue line is modelled pylon risk per hour (each scaled to its own peak). The line below it gives the timing correlation and how much faster outages ran in the windiest areas than in the calmest.
 
-The reproducible result for the **original five-hour mode** is:
+If the backend is not running, the page replays a bundled synthetic storm (`data/sample_storm.json`) and says so; real storms need the backend.
+
+## Monte Carlo experiment (API)
+
+The reproducible result for the **original five-hour mode** (`POST /api/experiment` with defaults) is:
 
 | Portfolio | Spend | Mean unserved energy (MWh) | Monte Carlo SE (MWh) | Major outage probability |
 | --- | ---: | ---: | ---: | ---: |
@@ -94,7 +97,7 @@ The reproducible result for the **original five-hour mode** is:
 
 Read `data/sample_run.json` for authoritative unrounded-to-display results. GridGuard chooses **L04, L07, L01, L02**. It reduces estimated energy not served by about **40.1%** versus no action. The power-flow baseline selects the same set in this run and ties it. This is a synthetic demonstration, not evidence of real-world reliability improvement or general superiority. Different seeds may favor a baseline.
 
-## How the model works
+## How the Monte Carlo experiment works (IEEE 14-bus)
 
 - **Network:** 14 benchmark buses, 259 MW total demand, 15 line branches and 5 transformer branches. IEEE bus numbers remain 1–14. `L01`–`L20` follow pandapower's exported branch order (transformers last), not a universal branch naming convention.
 - **Active supply:** buses 1 and 2 have the original active dispatch (219 and 40 MW in the lossless intact case) and caps (332.4 and 140 MW). Buses 3, 6 and 8 are treated as synchronous condensers with no active generation. This is an explicit model choice; original case14 generator P limits at those zero-P buses are not enabled as new reserve plants.
@@ -116,8 +119,9 @@ Read `data/sample_run.json` for authoritative unrounded-to-display results. Grid
 .venv\Scripts\python.exe -m pytest -q
 # Re-export the real benchmark and pandapower reference flows:
 .venv\Scripts\python.exe scripts/export_benchmark.py
-# Recreate the example JSON:
+# Recreate the example JSON and the offline sample storm:
 .venv\Scripts\python.exe scripts/sample_run.py
+.venv\Scripts\python.exe scripts/sample_storm.py
 cd frontend
 npm run build
 ```
@@ -128,20 +132,24 @@ The test suite checks benchmark identity, full-service intact dispatch, bus-leve
 
 `backend/weather.py:load_profile()` is the weather-provider hook; `data/sample_weather.json` is the documented input fixture. `docs/INTEGRATIONS.md` describes forecast ensembles, required geographic asset mapping and next-step **GDELT** event context. No external requests happen at app runtime.
 
-This prototype excludes AC voltage/reactive limits, transient/frequency stability, realistic relay delays, optimal redispatch, repairs, critical-load priorities and validated storm correlations. The five-window horizon, fragility and ratings are intentionally demo assumptions. It must not drive operational grid decisions.
+This prototype excludes AC voltage/reactive limits, transient/frequency stability, realistic relay delays, optimal redispatch, repairs outside multi-day mode, critical-load priorities and validated storm correlations. The five-window horizon, fragility and ratings are intentionally demo assumptions. It must not drive operational grid decisions.
 
 ## Attribution and layout
 
 The upstream [IC Hack 2026 WildFire repository](https://github.com/ltanak/ICHack26) was inspected at **dac1afe03655081b6633ba3eeb07f45db86834aa**, including its MIT licence, Flask API, simulation loop and React simulation/mitigation components. The retained architecture and workflow are described in `ATTRIBUTION.md`; original copyright and licence text are included. Wildfire spread code, satellite assets, pretrained models, credentials and large datasets are not part of this deliverable.
 
 ```text
-backend/                 Flask API, DC cascade simulator, weather adapter
-frontend/src/            React dashboard, SVG network, playback and comparisons
+backend/                 Flask API, DC cascade simulator, storm engine, real-storm benchmark, mitigations
+frontend/src/            React map: UK outline, grid, storm picker, continuous playback, outage comparison
 frontend/dist/           Built browser app (included in release ZIP)
 data/ieee14.json          Pandapower benchmark export + DC reference flows
+data/gb_network.json      GB 132–400 kV grid from OSM, with terrain elevation
+data/outages/             Real unplanned power cuts (CSV) used by the storm comparison
+data/storms/              Real storms: hourly gusts + outages per storm, and index.json
+data/sample_storm.json    Offline sample storm for the frontend
 data/sample_weather.json  Synthetic weather fixture
 data/sample_run.json      Reproducible example output
-scripts/                 Re-export benchmark and sample output
+scripts/                 Build the GB grid and storm benchmarks; re-export benchmark and samples
 tests/                   Meaningful physics/API checks
 third_party/             Retained licences
 docs/                    Architecture, integrations, validation, screenshots

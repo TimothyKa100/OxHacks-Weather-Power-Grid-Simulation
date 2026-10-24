@@ -1,5 +1,5 @@
 // Thin client for the Flask API (see docs/ARCHITECTURE.md). If the backend is
-// unreachable, callers fall back to the bundled data/sample_run.json.
+// unreachable, callers fall back to the bundled data/sample_storm.json.
 
 export class OfflineError extends Error {}
 
@@ -23,19 +23,20 @@ async function request(path, options = {}, timeoutMs = 120000) {
   return body;
 }
 
-export const fetchNetwork = () => request('/api/network', {}, 5000);
+// Real storms the backend can replay, for the storm picker.
+export const fetchStorms = () => request('/api/storms', {}, 5000);
 
-// A fresh seed per click gives a different storm each time; everything else
-// uses the backend's defaults.
-export function simulate() {
-  return request('/api/experiment', {
+// One seeded storm on the GB grid. A fresh seed per click gives different
+// failures each time; everything else uses the backend's defaults.
+export function simulate(scenario) {
+  return request('/api/storm', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({seed: Math.floor(Math.random() * 1_000_000)}),
+    body: JSON.stringify({scenario, seed: Math.floor(Math.random() * 1_000_000)}),
   });
 }
 
 export async function loadSample() {
-  const module = await import('../../data/sample_run.json');
+  const module = await import('../../data/sample_storm.json');
   return module.default;
 }

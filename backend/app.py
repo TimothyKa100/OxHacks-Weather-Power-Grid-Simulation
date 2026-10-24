@@ -9,7 +9,7 @@ from .simulation import NETWORKS, Network, run_experiment
 from .weather import validate_weather, STORM_PRESETS
 from .decisions import validate_economics
 from .storm import run_storm
-from .benchmark import STORMS, run_real_storm
+from .benchmark import STORM_LIST, STORMS, run_real_storm
 
 ROOT=Path(__file__).resolve().parents[1]
 app=Flask(__name__,static_folder=str(ROOT/'frontend/dist'),static_url_path='')
@@ -30,6 +30,12 @@ def network():
     name=request.args.get('name','ieee14')
     if name not in nets: return jsonify({'error':f'network must be one of {", ".join(NETWORKS)}'}),400
     return jsonify(nets[name].payload())
+
+@app.get('/api/storms')
+def storms():
+    """Real storms available to /api/storm (built by scripts/build_storm_benchmark.py), plus the grid they run on."""
+    fields=('id','name','start','hours','operators','outages','peak_gust_kmh')
+    return jsonify({'storms':[{k:s.get(k) for k in fields} for s in STORM_LIST],'network':nets['gb'].payload()})
 
 @app.post('/api/storm')
 def storm():
