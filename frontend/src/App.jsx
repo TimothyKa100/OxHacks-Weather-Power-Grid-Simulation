@@ -103,27 +103,11 @@ export default function App() {
 
   return (
     <main className="page">
-      {/* Fixed bands: the map keeps the same size for every storm. The top band holds the
-          real-storm comparison (empty for synthetic storms) and any notices. */}
-      <section className="top-band" aria-label="Real storm comparison">
-        {run?.storm && timeline && (
-          <>
-            <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
-            <Comparison run={run} />
-          </>
-        )}
-        {error && (
-          <p className="note error" role="alert">
-            {error}
-          </p>
-        )}
-        {offline && <p className="note">Backend offline: using a bundled sample storm.</p>}
-      </section>
-
       <div className="map-wrap">
         {network ? <UkMap network={network} run={run} timeline={timeline} t={t} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
+      {/* Fixed height for every storm, so the map above keeps the same size. */}
       <div className="panel">
         <div className="controls">
           <label className="visually-hidden" htmlFor="storm">
@@ -148,6 +132,18 @@ export default function App() {
         <p className="visually-hidden" aria-live="polite">
           {announcement}
         </p>
+        {run?.storm && timeline && (
+          <>
+            <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
+            <Comparison run={run} />
+          </>
+        )}
+        {error && (
+          <p className="note error" role="alert">
+            {error}
+          </p>
+        )}
+        {offline && <p className="note">Backend offline: using a bundled sample storm.</p>}
         <p className="credit">
           Grid © OpenStreetMap contributors (ODbL) via uk-grid-atlas
           {run?.storm && <> · Gusts: Met Office UKV via Open-Meteo.com (CC BY 4.0), © Crown copyright</>}

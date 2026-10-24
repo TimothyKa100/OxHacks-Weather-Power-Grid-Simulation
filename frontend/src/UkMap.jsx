@@ -1,5 +1,5 @@
 import React, {memo, useMemo} from 'react';
-import {mapFrame, outline} from './geo.js';
+import {VIEW, mapFrame, outline} from './geo.js';
 import {flashesAt, gustsAt, layerTime, mix, stateAt, stormAt} from './timeline.js';
 
 const LINE = {400: '#a9bccb', 275: '#8399aa', 132: '#617888'};
@@ -34,7 +34,7 @@ export default function UkMap({network, run, timeline, t}) {
   const storm = timeline ? stormAt(timeline, t) : null;
 
   return (
-    <svg className="uk-map" viewBox={`0 0 ${outline.width} ${outline.height}`} role="img" aria-label="Map of the GB transmission grid">
+    <svg className="uk-map" viewBox={`${VIEW.x} ${VIEW.y} ${VIEW.width} ${VIEW.height}`} role="img" aria-label="Map of the GB transmission grid">
       <defs>
         <radialGradient id="storm">
           <stop offset="0" stopColor="#9fb7cc" stopOpacity="0.45" />

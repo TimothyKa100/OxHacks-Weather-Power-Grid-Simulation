@@ -9,6 +9,13 @@ export function project(lon, lat) {
   return [(lon - bounds.lon_min) * cosLat * scale, (bounds.lat_max - lat) * scale];
 }
 
+// The visible frame: the full outline width, cropped at the top just above the Scottish
+// mainland (the GB grid stops at 58.6°N), so Orkney and Shetland fall outside and the
+// grid is drawn about a quarter larger.
+const VIEW_TOP_LAT = 58.75;
+export const VIEW = {x: 0, y: project(0, VIEW_TOP_LAT)[1], width: outline.width};
+VIEW.height = outline.height - VIEW.y;
+
 const hasLatLon = p => Number.isFinite(p?.lat) && Number.isFinite(p?.lon);
 
 export function isGeographic(buses) {

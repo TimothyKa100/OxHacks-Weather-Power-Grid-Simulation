@@ -13,28 +13,18 @@ body {
 }
 
 .page {
-  /* Top band (real-storm chart), map, controls. The bands have fixed heights so the
-     map is exactly the same size, and centred between them, for every storm. */
-  --top: 186px;
-  --bottom: 104px;
+  /* Map, then controls. The controls band has a fixed height (room for the real-storm
+     chart) so the map is the same size and position for every storm. */
+  --bottom: 286px;
   height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-rows: var(--top) minmax(0, 1fr) var(--bottom);
+  grid-template-rows: minmax(0, 1fr) var(--bottom);
+  /* One column, pinned to the screen width: otherwise it grows to fit the chart. */
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   padding: 12px 16px;
   gap: 8px;
-}
-.top-band {
-  width: 100%;
-  max-width: 640px;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 4px;
-  text-align: center;
 }
 .map-wrap {
   width: 100%;
@@ -227,10 +217,9 @@ body {
   color: #5f6670;
 }
 
-/* Phones: the chart legend and verdict wrap, and the status line may take two rows. */
+/* Phones: the chart legend, verdict, status and credits wrap onto more rows. */
 @media (max-width: 600px) {
   .page {
-    --top: 228px;
-    --bottom: 128px;
+    --bottom: 392px;
   }
 }
