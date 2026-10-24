@@ -1,0 +1,3 @@
+-r requirements.txt
+pandapower==3.5.6
+pytest==9.1.1
