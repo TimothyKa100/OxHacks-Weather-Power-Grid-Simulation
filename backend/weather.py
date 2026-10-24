@@ -17,8 +17,7 @@ def fragility(gust_kmh, rain_mm_h, exposure, hardened=False):
 def scenarios(network, intensity, seed, count):
     rng = np.random.default_rng(seed)
     profile = load_profile()
-    midpoints = np.array([[(network.buses[e['from']-1]['x']+network.buses[e['to']-1]['x'])/2,
-                           (network.buses[e['from']-1]['y']+network.buses[e['to']-1]['y'])/2] for e in network.branches])
+    midpoints = network.midpoints
     # Shared storm severity correlates line risks. Conditional Bernoulli draws remain independent.
     severity = rng.lognormal(-.5*.09**2, .09, (count,1,1))
     centers = np.array([[w['center_x'],w['center_y']] for w in profile['windows']])
@@ -77,6 +76,10 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
         gust = np.array([np.broadcast_to(r['gust_kmh'], (network.m,)) for r in rows])
         rain = np.array([np.broadcast_to(r['rain_mm_h'], (network.m,)) for r in rows])
         timestamps = [r['timestamp'] for r in rows]
+    elif network.geographic:
+        gust, rain = storm_track(network, intensity, hours)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        timestamps = [(start+timedelta(hours=int(t))).isoformat() for t in range(hours)]
     else:
         t = np.arange(hours)
         # One storm followed by a calmer recovery period; illustrative route variation.
@@ -90,3 +93,22 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
     repair = np.clip(rng.lognormal(np.log(8), .4, (count, hours, network.m)), 2, 36)
     return [dict(gust=gust, rain=rain, draws=draws[i], repair_hours=repair[i],
                  timestamps=timestamps, dt_hours=1., crews=crews, recovery=True) for i in range(count)]
+
+
+def storm_track(network, intensity, hours):
+    """Synthetic Atlantic depression crossing a geographic network south-west to north-east.
+
+    Gust at each branch midpoint falls off with distance from the moving storm
+    centre (normalised map units; ~130 km sigma for GB). Illustrative only.
+    """
+    t = np.arange(hours)
+    x0, y0 = network.midpoints.min(axis=0); x1, y1 = network.midpoints.max(axis=0)
+    span = max(6., hours*.35); peak = hours*.3
+    progress = np.clip((t-(peak-span/2))/span, 0, 1)[:, None]
+    centre = np.hstack([x0+(x1-x0)*(.1+.8*progress), y1-(y1-y0)*(.1+.8*progress)])
+    distance = np.sum((centre[:, None, :]-network.midpoints[None, :, :])**2, axis=2)
+    active = np.exp(-.5*((t-peak)/max(3., span*.6))**2)[:, None]
+    footprint = np.exp(-distance/(2*.12**2))
+    gust = intensity * (.2 + .8*footprint*active)
+    rain = 25 * footprint * active
+    return gust, rain

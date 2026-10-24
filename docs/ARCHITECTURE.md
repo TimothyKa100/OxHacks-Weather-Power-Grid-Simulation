@@ -44,7 +44,7 @@ The interface is implemented anew around grid decisions. Keeping NumPy and a sma
 - `samples`: 16–512 (UI choices start at 64).
 - `budget`: 0–12 illustrative units.
 
-The response includes `config`, `model`, `network`, `weather`, `portfolios`, `optimization_trace`, example-selection rationale and runtime. Each portfolio includes a selected branch list, spending, ensemble metrics, paired gain/SE and frames for the same held-out scenario. Loss distributions are included for offline analysis. There is no persistent server session or shared RNG state. An in-process lock bounds computation to one experiment at a time; concurrent attempts receive 429 with a retry message. A small in-memory LRU caches completed parameter sets and repeated electrical states.
+The response includes `config`, `model`, `network`, `weather`, `portfolios`, `optimization_trace`, example-selection rationale and runtime. Each portfolio includes a selected branch list, spending, ensemble metrics, paired gain/SE and frames for the same held-out scenario. Loss distributions are included for offline analysis. There is no persistent server session or shared RNG state. An in-process lock bounds computation to one experiment at a time; concurrent requests wait up to 120 s, then receive 429 with a retry message. A small in-memory LRU caches completed parameter sets and repeated electrical states.
 
 ## Electrical state transitions
 
