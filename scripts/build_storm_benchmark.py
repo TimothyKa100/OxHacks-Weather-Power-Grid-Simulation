@@ -15,7 +15,8 @@ the Open-Meteo historical forecast API, sampled on a 0.25 degree grid. Responses
 per storm in data/storms/.cache/, so reruns only fetch missing points. The free API allows
 5,000 location-calls an hour, so requests are paced.
 
-Writes data/storms/index.json, which the backend reads to list the storms.
+The backend lists every storm file in data/storms/. These files are local data and are
+git-ignored (only darragh-2024.json is tracked); rebuild them here.
 """
 import csv
 import http.client
@@ -151,7 +152,8 @@ def build(storm, feeds):
         ended = defaultdict(list)
         for s, e, lon, lat, _ in rows:
             if e and start-timedelta(hours=REID_HOURS) <= e < end: ended[(round(lon, 4), round(lat, 4))].append(e)
-        for s, e, lon, lat, rid in sorted(rows):
+        # Sort without the end time: it may be missing (still running), and None cannot be compared.
+        for s, e, lon, lat, rid in sorted(rows, key=lambda r: (r[0], r[2], r[3], r[4])):
             if not start <= s < end: continue
             if any(timedelta(0) <= s-x <= timedelta(hours=REID_HOURS) for x in ended[(round(lon, 4), round(lat, 4))]):
                 reissued += 1; continue
@@ -190,21 +192,6 @@ def build(storm, feeds):
             'baseline': {'cell': GRID, 'feeds': baseline_feeds}}
 
 
-def write_index():
-    """List every built storm for the backend, in date order."""
-    index = []
-    for storm in CATALOGUE:
-        path = STORMS_DIR/f"{storm['id']}.json"
-        if not path.exists(): continue
-        built = json.loads(path.read_text(encoding='utf-8'))
-        peak = max((g for hour in built['grid']['gust_kmh'] for row in hour for g in row if g is not None), default=None)
-        index.append({**storm, 'file': f"data/storms/{storm['id']}.json", 'operators': built['operators'],
-                      'outages': len(built['outages']), 'peak_gust_kmh': round(peak) if peak is not None else None})
-    # ASCII-escaped JSON reads correctly whatever the reader's locale encoding.
-    (STORMS_DIR/'index.json').write_text(json.dumps(index, indent=1)+'\n', encoding='utf-8')
-    return index
-
-
 if __name__ == '__main__':
     args = sys.argv[1:]
     wanted = {args[i+1] for i, a in enumerate(args) if a == '--storm' and i+1 < len(args)}
@@ -217,7 +204,7 @@ if __name__ == '__main__':
         if wanted and storm['id'] not in wanted: continue
         out = build(storm, feeds)
         path = STORMS_DIR/f"{storm['id']}.json"
-        path.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')  # ASCII-escaped, see write_index
+        # ASCII-escaped JSON reads correctly whatever the reader's locale encoding.
+        path.write_text(json.dumps(out, separators=(',', ':')), encoding='utf-8')
         print(f"wrote {path.relative_to(ROOT)}: {len(out['outages'])} outages, {len(out['coverage'])} coverage cells, "
               f"{path.stat().st_size/1e6:.1f} MB", file=sys.stderr)
-    print(f'index: {len(write_index())} storms', file=sys.stderr)

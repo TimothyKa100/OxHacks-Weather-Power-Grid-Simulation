@@ -3,6 +3,7 @@ import {OfflineError, fetchStorms, loadSample, simulate} from './api.js';
 import {checkRun} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
+import StormChart from './StormChart.jsx';
 
 const PLAYBACK_MS = 22000; // a whole storm plays in about this long
 const TICK_MS = 1000 / 30;
@@ -124,7 +125,7 @@ export default function App() {
           </button>
         </div>
         {run?.storm && timeline ? (
-          <TimingStrip benchmark={run.benchmark} t={t} hours={timeline.lastHour} />
+          <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
         ) : (
           <div className="progress" aria-hidden="true">
             <i style={{width: timeline ? `${(100 * t) / timeline.end}%` : 0}} />
@@ -147,34 +148,6 @@ export default function App() {
         </p>
       </div>
     </main>
-  );
-}
-
-// Real outage starts per hour (bars) against modelled pylon risk per hour (line),
-// each scaled to its own peak: this compares timing, not counts.
-function TimingStrip({benchmark, t, hours}) {
-  const observed = benchmark.observed_per_hour;
-  const modelled = benchmark.modelled_per_hour;
-  const n = observed.length;
-  const W = 300;
-  const H = 34;
-  const maxObserved = Math.max(1, ...observed);
-  const maxModelled = Math.max(...modelled) || 1;
-  const line = modelled.map((v, i) => `${(((i + 0.5) / n) * W).toFixed(1)},${(H - (v / maxModelled) * (H - 3)).toFixed(1)}`).join(' ');
-  const x = Math.min(W, (Math.min(t, hours) / n) * W);
-  return (
-    <figure className="timing">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Real power cuts per hour against modelled pylon risk per hour">
-        {observed.map((v, i) => (
-          <rect key={i} x={(i / n) * W + 0.4} y={H - (v / maxObserved) * (H - 3)} width={W / n - 0.8} height={(v / maxObserved) * (H - 3)} fill="#ffd27a" opacity={i < t ? 0.8 : 0.25} />
-        ))}
-        <polyline points={line} fill="none" stroke="#5da8bc" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        <line x1={x} x2={x} y1="0" y2={H} stroke="#f0efec" strokeWidth="1" opacity="0.7" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <figcaption>
-        <i className="key bars" /> real power cuts per hour <i className="key line" /> modelled pylon risk
-      </figcaption>
-    </figure>
   );
 }
 

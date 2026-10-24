@@ -91,13 +91,16 @@ def test_normal_rate_sums_each_feed_over_its_own_span(tmp_path, no_weather_calls
     assert row['expected_normal'] == pytest.approx(n_home/nged['days']+5/10., abs=.01)
 
 
-def test_storm_list_matches_built_files():
-    index = json.loads((ROOT/'data/storms/index.json').read_text(encoding='utf-8'))
-    assert index, 'run scripts/build_storm_benchmark.py'
+def test_storm_list_matches_files_on_disk():
+    files = sorted((ROOT/'data/storms').glob('*.json'))
+    built = [s for s in (json.loads(p.read_text(encoding='utf-8')) for p in files) if isinstance(s, dict) and 'outages' in s]
     body = app.test_client().get('/api/storms').get_json()
-    assert [s['id'] for s in body['storms']] == [s['id'] for s in index]
+    # Darragh is tracked in git; other storms exist only where they were built.
+    assert 'darragh-2024' in {s['id'] for s in body['storms']}
+    assert sorted(s['id'] for s in body['storms']) == sorted(s['id'] for s in built)
+    assert [s['start'] for s in body['storms']] == sorted(s['start'] for s in body['storms'])
     assert len(body['network']['buses']) == 303
-    for entry in index:
-        built = json.loads((ROOT/entry['file']).read_text(encoding='utf-8'))
-        assert len(built['outages']) == entry['outages'] and built['operators'] == entry['operators']
+    for entry in body['storms']:
+        storm = next(s for s in built if s['id'] == entry['id'])
+        assert entry['outages'] == len(storm['outages']) and entry['operators'] == storm['operators']
         assert entry['id'] in {s['id'] for s in builder.CATALOGUE}

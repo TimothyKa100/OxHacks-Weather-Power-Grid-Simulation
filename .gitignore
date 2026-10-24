@@ -6,3 +6,6 @@ frontend/dist/
 *.log
 
 data/storms/.cache/
+# Built storm data stays local (rebuild with scripts/build_storm_benchmark.py); Darragh is the tracked example.
+data/storms/*.json
+!data/storms/darragh-2024.json

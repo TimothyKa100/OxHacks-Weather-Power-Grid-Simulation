@@ -33,7 +33,7 @@ The interface is implemented anew around grid decisions. Keeping NumPy and a sma
 
 `GET /api/network?name=ieee14|gb` returns network data plus explicitly assumed ratings and map coordinates.
 
-`GET /api/storms` lists the real storms built by `scripts/build_storm_benchmark.py` (id, name, start, hours, outage feeds, outage count, peak gust) and returns the GB network the map draws.
+`GET /api/storms` lists the real storm files in `data/storms/` (built by `scripts/build_storm_benchmark.py`) (id, name, start, hours, outage feeds, outage count, peak gust) and returns the GB network the map draws.
 
 `POST /api/storm` runs one seeded storm on the GB network: `{"scenario":"synthetic","peak_gust":160,"hours":36,"seed":1}` (peak gust 60–250 km/h, 6–72 hours), or `{"scenario":"<storm id>","seed":1}` to replay a real storm. It returns hourly `frames` (line status `online`/`pylon`/`overload`, where each pylon fell, flows, served load); real storms also return the hourly gust grid, the real outages, outage-feed coverage and a `benchmark` comparing timing and place.
 

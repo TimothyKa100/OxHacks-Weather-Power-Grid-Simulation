@@ -9,7 +9,7 @@ wind-driven risk lands in the right hours and places:
 - place: per 0.25 degree cell, storm peak gust vs. how far outages rose above that
   cell's normal daily rate (normal rate from the rest of each feed's record).
 
-Storms are built by scripts/build_storm_benchmark.py and listed in data/storms/index.json.
+Storms are built by scripts/build_storm_benchmark.py into data/storms/; every storm file there is listed.
 """
 import json
 import warnings
@@ -21,8 +21,27 @@ import numpy as np
 from .storm import GUSTINESS, altitude_factor, model_info, route_samples, simulate_gusts
 
 ROOT = Path(__file__).resolve().parents[1]
-_INDEX = ROOT/'data/storms/index.json'
-STORM_LIST = json.loads(_INDEX.read_text(encoding='utf-8')) if _INDEX.exists() else []
+
+
+def _list_storms():
+    """Every built storm on disk, oldest first. Storm files are local data (most are not
+    in git), so the list is whatever scripts/build_storm_benchmark.py has written here."""
+    storms = []
+    for path in sorted((ROOT/'data/storms').glob('*.json')):
+        try:
+            s = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(s, dict) or 'outages' not in s or 'grid' not in s:
+            continue  # not a storm file
+        gusts = [g for hour in s['grid']['gust_kmh'] for row in hour for g in row if g is not None]
+        storms.append({'id': s['id'], 'name': s['name'], 'start': s['start'], 'hours': s['hours'],
+                       'file': str(path.relative_to(ROOT)), 'operators': s.get('operators', [s.get('operator')]),
+                       'outages': len(s['outages']), 'peak_gust_kmh': round(max(gusts)) if gusts else None})
+    return sorted(storms, key=lambda s: s['start'])
+
+
+STORM_LIST = _list_storms()
 STORMS = {s['id']: s['file'] for s in STORM_LIST}
 
 

@@ -37,7 +37,7 @@ Terrain heights for every substation and for route sample points every ~2 km (`e
 
 ## Real storm benchmarks (outages and weather)
 
-`data/storms/<id>.json` and `data/storms/index.json` are built by `scripts/build_storm_benchmark.py` from `data/outages/unplanned_outages.csv` (the processed companion outage dataset). Storm names and impact dates follow the Met Office UK Storm Centre season pages.
+`data/storms/<id>.json` files are built by `scripts/build_storm_benchmark.py` from `data/outages/unplanned_outages.csv` (the processed companion outage dataset). Storm names and impact dates follow the Met Office UK Storm Centre season pages.
 
 - **Outages:** unplanned power cuts from the git-scraped NGED feed (jmcharter/nationalgrid-outage-history, from May 2024) and the UK Power Networks `ukpn_powercuts` feed (from late October 2025). Each storm uses the feeds that ran for its whole window, so only those operators' licence areas are covered. The 2021–22 Outage-Watch rows in the CSV are too sparse to give a normal rate and are not used. NGED start times are first-snapshot sightings (the scraper polled roughly every 20 min to 3 h). Rows whose start is unknown because they were first seen already restored are dropped. Incidents that restart at the same location within 4 h of another ending there are treated as the feed re-issuing an id and dropped (for Storm Darragh, 1,286 in the storm window, including a 1,102-incident batch at 22:03 UTC on 8 Dec 2024).
 - **Weather:** hourly 10 m wind gusts from the Met Office UKV model (`ukmo_seamless`) via the Open-Meteo historical forecast API, sampled on a 0.25° grid. Weather data by Open-Meteo.com, licensed CC BY 4.0. Met Office data © Crown copyright, Open Government Licence.
