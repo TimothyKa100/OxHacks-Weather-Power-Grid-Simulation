@@ -1,6 +1,6 @@
 import React, {useLayoutEffect, useRef, useState} from 'react';
 
-const H = 150;
+const H = 120;
 const M = {top: 10, right: 10, bottom: 24, left: 40};
 const ACTUAL = '#ffd27a';
 const PREDICTED = '#5da8bc';

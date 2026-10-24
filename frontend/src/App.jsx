@@ -103,6 +103,23 @@ export default function App() {
 
   return (
     <main className="page">
+      {/* Fixed bands: the map keeps the same size for every storm. The top band holds the
+          real-storm comparison (empty for synthetic storms) and any notices. */}
+      <section className="top-band" aria-label="Real storm comparison">
+        {run?.storm && timeline && (
+          <>
+            <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
+            <Comparison run={run} />
+          </>
+        )}
+        {error && (
+          <p className="note error" role="alert">
+            {error}
+          </p>
+        )}
+        {offline && <p className="note">Backend offline: using a bundled sample storm.</p>}
+      </section>
+
       <div className="map-wrap">
         {network ? <UkMap network={network} run={run} timeline={timeline} t={t} /> : !error && <p className="note">Loading grid…</p>}
       </div>
@@ -121,27 +138,16 @@ export default function App() {
             ))}
           </select>
           <button type="button" className="simulate" onClick={onSimulate} disabled={busy || playing || !network}>
-            {busy ? 'Simulating…' : playing ? 'Storm in progress…' : 'Simulate'}
+            {busy ? 'Simulating…' : playing ? 'Playing…' : 'Simulate'}
           </button>
         </div>
-        {run?.storm && timeline ? (
-          <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
-        ) : (
-          <div className="progress" aria-hidden="true">
-            <i style={{width: timeline ? `${(100 * t) / timeline.end}%` : 0}} />
-          </div>
-        )}
+        <div className="progress" aria-hidden="true">
+          <i style={{width: timeline ? `${(100 * t) / timeline.end}%` : 0}} />
+        </div>
         <p className="status">{status}</p>
         <p className="visually-hidden" aria-live="polite">
           {announcement}
         </p>
-        {run?.storm && <Comparison run={run} />}
-        {error && (
-          <p className="note error" role="alert">
-            {error}
-          </p>
-        )}
-        {offline && <p className="note">Backend offline: using a bundled sample storm.</p>}
         <p className="credit">
           Grid © OpenStreetMap contributors (ODbL) via uk-grid-atlas
           {run?.storm && <> · Gusts: Met Office UKV via Open-Meteo.com (CC BY 4.0), © Crown copyright</>}
@@ -151,18 +157,18 @@ export default function App() {
   );
 }
 
-// One-line verdict: does the modelled risk land in the right hours and places?
+// Short verdict under the chart: does the modelled risk land in the right hours and places?
 function Comparison({run}) {
   const b = run.benchmark;
   const s = run.storm;
   const fixed = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : '–');
-  const hourLabel = i => (s.timestamps[i] ? `${clock(s.timestamps[i])}` : `hour ${i}`);
+  const hourLabel = i => (s.timestamps[i] ? clock(s.timestamps[i]) : `hour ${i}`);
   return (
     <p className="note comparison">
-      Real cuts peaked {hourLabel(b.peak_hour_observed)}, modelled risk {hourLabel(b.peak_hour_modelled)} (UTC); hourly
-      correlation r = {fixed(b.timing_correlation, 2)}. Windiest third of areas ran at {fixed(b.rise_windiest_third, 1)}× their
-      normal outage rate, calmest third {fixed(b.rise_calmest_third, 1)}× (ρ = {fixed(b.place_rank_correlation, 2)}). Dots are{' '}
-      {s.operator} distribution faults, so this tests timing and place, not counts; shaded areas have outage data.
+      Peaks: actual {hourLabel(b.peak_hour_observed)}, predicted {hourLabel(b.peak_hour_modelled)} UTC · timing r ={' '}
+      {fixed(b.timing_correlation, 2)} · windiest areas {fixed(b.rise_windiest_third, 1)}× normal outages, calmest{' '}
+      {fixed(b.rise_calmest_third, 1)}× (ρ = {fixed(b.place_rank_correlation, 2)}). Dots are {s.operator} distribution
+      faults; shaded areas have outage data.
     </p>
   );
 }
