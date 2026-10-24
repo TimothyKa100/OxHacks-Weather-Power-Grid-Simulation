@@ -60,7 +60,7 @@ def paired_evidence(before, after):
 
 def public_guidance():
     return {
-        'scope': 'General outage preparedness; this schematic model cannot predict an individual home outage or a safe walking route.',
+        'scope': 'General outage preparedness; this simplified grid model cannot predict an individual home outage or a safe walking route.',
         'actions': [
             {'title': 'Prepare before disruption', 'detail': 'Charge phones and power banks; keep a torch, essential contacts and necessary supplies accessible.'},
             {'title': 'Plan for essential support', 'detail': 'If you depend on powered medical equipment, arrange a backup plan with your care provider and check eligibility for your network operator’s Priority Services Register.'},

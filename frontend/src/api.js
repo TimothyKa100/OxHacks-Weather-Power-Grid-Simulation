@@ -9,7 +9,8 @@ async function request(path, options = {}, timeoutMs = 120000) {
   let response;
   try {
     response = await fetch(path, {...options, signal: controller.signal});
-  } catch {
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('Comparison timed out. Reduce scenarios or horizon and retry.');
     throw new OfflineError('Cannot reach the backend.');
   } finally {
     clearTimeout(timer);
@@ -26,14 +27,13 @@ async function request(path, options = {}, timeoutMs = 120000) {
 // Real storms the backend can replay, for the storm picker.
 export const fetchStorms = () => request('/api/storms', {}, 5000);
 
-// One seeded storm on the GB grid. A fresh seed per click gives different
-// failures each time; everything else uses the backend's defaults.
-export function simulate(scenario) {
-  return request('/api/storm', {
+// The shared GB decision engine. Keep an explicit seed for fair mitigation reruns.
+export function simulate(scenario, options = {}) {
+  return request('/api/storm-plan', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({scenario, seed: Math.floor(Math.random() * 1_000_000)}),
-  });
+    body: JSON.stringify({...options, scenario}),
+  }, 300000);
 }
 
 export async function loadSample() {

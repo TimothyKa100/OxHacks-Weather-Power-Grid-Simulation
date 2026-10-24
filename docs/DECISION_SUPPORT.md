@@ -84,10 +84,31 @@ Three multi-day windstorm presets are provided: single peak, persistent strong
 winds and two successive fronts. They are synthetic exposures for stress tests,
 not different calibrated meteorological hazards. Seeded failures and repair durations
 are reproducible. Imported historical weather overrides the synthetic preset and
-reference gust. No real storm dataset has been bundled or silently downloaded.
+reference gust. The GB integration includes the tracked Darragh replay. Other storm files are built locally and listed only when present.
 
 Generic scenarios are useful for demonstrating robustness. Historical storm weather
 is useful for replay. Neither supplies observed asset-failure labels by itself.
 Train ML on asset-hour exposure records with observed failures and operating
 non-events, then hold entire storms out of fitting and tuning. Synthetic failure
 labels can test plumbing but do not establish real-world predictive skill.
+
+
+## GB map integration
+
+`POST /api/storm-plan` is the map's primary endpoint. It maps synthetic or historical
+route-level exposures into this multi-day decision engine, including full-precision
+line failure probabilities from the map branch's illustrative pylon/altitude model.
+That engineering provenance is distinct from the `prediction` provenance required
+for externally trained ML probabilities. The same 75% hazard reduction and 30%
+rating increase remain assumptions for reinforcement.
+
+For historical runs, observed distribution outages and the wind-risk timing chart
+are immutable context. They are not altered by reinforcement and never used to
+select a portfolio. The map renders settled hourly states; exported portfolio
+playback also preserves within-hour cascade rounds. Weather failures are shown at
+line level; there is no inferred exact pylon failure site in the decision engine.
+
+The response's `replay.request` is submitted to `/api/storm-plan` for custom plans.
+It preserves scenario, seed and evaluation settings and reconstructs internal route
+exposures server-side. Imported weather is retained in the descriptor. Cost changes
+require a rerun; their estimated values remain labelled as illustrative.

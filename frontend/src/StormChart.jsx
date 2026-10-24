@@ -59,14 +59,14 @@ export default function StormChart({benchmark, timestamps, t}) {
           <i className="key bars" /> Actual: real power cuts per hour <small>(peak {maxActual.toLocaleString('en-GB')})</small>
         </span>
         <span>
-          <i className="key line" /> Predicted: pylon collapses per hour <small>(peak {small(maxPredicted)})</small>
+          <i className="key line" /> Engineering wind-risk proxy per hour <small>(peak {small(maxPredicted)})</small>
         </span>
       </figcaption>
       <svg
         width={width}
         height={H}
         role="img"
-        aria-label={`Actual power cuts and predicted pylon collapses per hour, each as a share of its own peak. Actual peaked in hour ${benchmark.peak_hour_observed}, predicted in hour ${benchmark.peak_hour_modelled}.`}
+        aria-label={`Observed power cuts and engineering wind risk per hour, each as a share of its own peak. Actual peaked in hour ${benchmark.peak_hour_observed}, predicted in hour ${benchmark.peak_hour_modelled}.`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
@@ -110,7 +110,7 @@ export default function StormChart({benchmark, timestamps, t}) {
             <i className="key bars" /> {actual[hover].toLocaleString('en-GB')} real power cuts
           </span>
           <span>
-            <i className="key line" /> {small(predicted[hover])} predicted collapses
+            <i className="key line" /> {small(predicted[hover])} modelled risk
           </span>
         </div>
       )}

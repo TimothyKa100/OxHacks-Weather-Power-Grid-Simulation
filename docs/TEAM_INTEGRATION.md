@@ -2,26 +2,27 @@
 
 ## Map and network teammate
 
-The current electrical model remains IEEE case14; map points must not be treated
-as its actual UK geography. Atlas geometries alone do not establish bus connectivity,
-reactances, ratings, demand allocation or dispatch. Before replacing the benchmark:
+The GB map now runs on the GB geographic network inherited from `feature/gb-storm-map`.
+The OSM builder clusters endpoints, merges parallel ways and contracts series chains;
+this is an approximate backbone, not a utility-validated electrical model. Reactances,
+ratings, demand allocation and generator dispatch are assumptions. IEEE case14 remains
+available through `/api/experiment` for independent physics regression tests.
 
-1. Choose a manageable region and manually check line-to-substation connections.
-   Crossings are not junctions. Different voltage buses connect through transformers.
-2. Retain external connections as explicit boundary supplies. Do not make a cropped
-   region artificially isolated. Include generation capacities and mapped demand.
-3. Provide stable asset IDs and record which electrical parameters are assumed.
-4. Check intact power balance and each island before showing physical cascade claims.
+Before making regional reliability claims, manually check line-to-substation
+connections, crossings, voltage-changing transformers, regional boundary supplies
+and demand mapping. A connected graph and balanced DC solution do not establish
+that its electrical topology matches the operational grid.
 
-There is no real UK network import/validation pipeline in this prototype. Once the
-team supplies a checked graph, Network and regional thresholds must be generalized;
-case14's topology, load and asset types must not silently carry over to UK assets.
+The primary map endpoint is `/api/storm-plan`; its custom-plan replay descriptor
+preserves the completed event and random draws. Additional real/ML weather exposures
+can be imported via the map using the GB branch order below. See
+[GB integration details](GB_INTEGRATION.md).
 
 ## ML teammate: one-hour operating-asset probabilities
 
 Use the weather import/API payload from MULTIDAY.md. Optionally supply predictions:
 
-- `branch_ids`: every branch ID in exactly `/api/network` order (currently L01–L20).
+- `branch_ids`: every branch ID in exactly `/api/network` order (L01–L20 for IEEE14; use `GET /api/network?name=gb` for the GB map).
 - `prediction`: string `model_version`, ISO timezone-aware `training_cutoff` and
   `issued_at`. Training cutoff must not follow issue time; issue time must not follow
   the first replay interval's start.

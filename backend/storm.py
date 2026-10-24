@@ -123,11 +123,31 @@ def model_info(net):
             'route_samples': int(len(route_samples(net)['line']))}
 
 
-def run_storm(net, peak_gust=160, hours=36, seed=1):
+def planning_exposure(net, frames, hazards, timestamps, source):
+    """Full-precision route risk for the shared multi-day decision engine.
+
+    Engineering probabilities are labelled separately from trained ML predictions.
+    Sampling and repairs are performed by simulation.simulate, never by the map.
+    """
+    line_of=route_samples(net)['line']
+    return {'source':source, 'branch_ids':[e['id'] for e in net.branches],
+            'engineering_model':{'name':'route-pylon-v1','parameters':model_info(net)},
+            'hours':[{'timestamp':timestamps[t], 'gust_kmh':frames[t+1]['gust_kmh'], 'rain_mm_h':0,
+                      'failure_probability':(-np.expm1(-np.bincount(line_of,hazard,net.m))).tolist()}
+                     for t,hazard in enumerate(hazards)]}
+
+
+def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak'):
     """Synthetic depression crossing the network south-west to north-east."""
     rng = np.random.default_rng(seed)
     samples = route_samples(net)
     centre, strength = storm_path(net, hours, rng)
+    if storm_type=='persistent':
+        strength=.35+.65*np.sin(np.pi*np.linspace(.05,.95,hours))**.35
+    elif storm_type=='double_peak':
+        strength=.25+.75*np.sin(2*np.pi*np.linspace(.025,.975,hours))**2
+    elif storm_type!='single_peak':
+        raise ValueError('Unknown storm preset')
 
     def gust_at(t):
         distance = np.sum((samples['xy']-centre[t])**2, axis=1)
@@ -135,5 +155,9 @@ def run_storm(net, peak_gust=160, hours=36, seed=1):
         return field*rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
 
     marker = lambda t: ([round(float(c), 4) for c in centre[t]], STORM_SIGMA)
-    frames, _ = simulate_gusts(net, hours, gust_at, rng, marker)
-    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames}
+    frames, hazards = simulate_gusts(net, hours, gust_at, rng, marker)
+    from datetime import datetime,timedelta,timezone
+    start=datetime(2026,1,1,tzinfo=timezone.utc)
+    timestamps=[(start+timedelta(hours=t)).isoformat() for t in range(hours)]
+    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed,'storm_type':storm_type}, 'model': model_info(net), 'frames': frames,
+            'planning_weather':planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility')}

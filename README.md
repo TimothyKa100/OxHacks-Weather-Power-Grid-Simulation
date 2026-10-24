@@ -1,20 +1,20 @@
 # GridGuard
 
-A storm crossing the Great Britain transmission grid, one hour at a time: wind → pylons → lines → power flow.
+A GB storm map with multi-day failure, repair and mitigation decisions: weather → line risk → DC cascades → restoration → investment comparison.
 
-- **Grid:** 303 substations and 367 lines at 132–400 kV, built from [uk-grid-atlas](https://github.com/jacobwright32/uk-grid-atlas) OpenStreetMap data.
-- **Pylons:** each line's pylon count is its route length ÷ a typical span (400 kV 360 m, 275 kV 350 m, 132 kV 280 m), about 33,000 in total.
-- **Elevation:** every substation and a point every ~2 km along each real OSM route carry terrain height from EU-DEM (25 m). Local gust is scaled by the UK National Annex to BS EN 1991-1-4 altitude factor, `c_alt = 1 + 0.001 × elevation × (10 / tower height)^0.2`, with towers 50 m (400 kV), 46 m (275 kV) and 27 m (132 kV) tall. Pylons on high ground see stronger wind and fall more often.
-- **Failure:** each pylon has a lognormal fragility curve (50% chance of collapse within an hour at a 265 km/h gust at the pylon, β 0.12). Gust is sampled at 8 points along each route. One collapse takes the line out for the rest of the storm, so long, exposed lines are the vulnerable ones.
-- **Consequence:** a DC power flow reroutes power after every collapse. Lines pushed past their rating trip, and are reclosed the next hour. Substations left in islands without enough generation are disconnected.
+The interface combines the geographic map from `feature/gb-storm-map` with the simulation and decision support from `feature/multiday-weather-recovery`.
 
-The app is a map of the UK with the grid on it, a storm picker and a **Simulate** button. Each run is one seeded storm (`POST /api/storm`) played back as a continuous animation. The storm glides across the map, lines fade to dashed red when a pylon falls (marked with a cross where it fell) or orange when they trip on overload, and substations losing supply turn red. Spans, fragility, ratings, dispatch and demand are illustrative, not utility data.
+- **Map:** 303 substations and 367 transmission branches at 132–400 kV, using OSM routes and terrain via uk-grid-atlas. Electrical parameters, generation dispatch and demand allocation remain illustrative.
+- **Weather:** synthetic geographic windstorms (single peak, persistent winds or two peaks), the tracked Storm Darragh historical replay, other locally built storms, or imported hourly GB weather / model probabilities.
+- **One decision engine:** the map uses `POST /api/storm-plan`. Route length, sampled terrain and pylon fragility supply illustrative hourly line probabilities; the multi-day simulator handles failure draws, DC overload cascades, limited crews, repairs and reconnection. No precise pylon-collapse location is inferred by this planner.
+- **Two audiences:** public outage preparedness and organisation/government mitigation. Choose suggested or custom line reinforcements, compare repair priorities, and apply a plan to the same completed storm and seed.
+- **Evidence and costs:** paired held-out loss differences, peak/final major outages, worst-decile loss, recovery, editable asset investment costs, benefit/cost ratios and break-even events. Costs and interruption values are assumptions.
 
-**Real storms vs. real outages.** Besides a synthetic storm, the picker replays the named storms built on your machine (up to eight) with hourly Met Office UKV gusts, scaled from the weather model's terrain to each route's real height: Bert (Nov 2024), Darragh (Dec 2024), Éowyn (Jan 2025), Amy (Oct 2025), Claudia (Nov 2025), Bram (Dec 2025), Goretti (Jan 2026) and Austen (Oct 2026). Real power cuts from `data/outages/unplanned_outages.csv` appear on the map as they started. For real storms only, a chart under the map plots actual breakage (real power cuts per hour, bars) and predicted breakage (modelled pylon collapses per hour, line) on one time axis, each as a share of its own peak because the counts differ by orders of magnitude; hovering an hour shows the exact numbers. A one-line summary compares place: each 0.25° area's peak gust against how far its outages rose above that area's normal daily rate. Outages come from the NGED feed (from May 2024) and the UKPN feed (from late October 2025), so only those licence areas have data; they are shaded on the map. They are distribution faults, not transmission pylons, so this tests where and when the risk lands, not how many things break. These are the named storms with a clear outage spike in the CSV; Ashley, Conall, Floris, Benjamin, Chandra and Dave barely register and are left out.
+Run a comparison, select a portfolio in the decision table to show it on the map, and pause/scrub playback. Green routes are reinforced; red routes have a weather failure; orange routes tripped on overload. Observed outage dots and the historical wind-risk chart remain fixed when hypothetical interventions change the simulation. Export includes full cascade frames and decision assumptions.
 
-Rebuild the storms with `python scripts/build_storm_benchmark.py` (default CSV `data/outages/unplanned_outages.csv`; `--storm ID` for one). Weather comes from the Open-Meteo historical forecast API, cached per storm in `data/storms/.cache/` and paced to stay under its free-tier limit of 5,000 location-calls an hour, so a full rebuild takes about 90 minutes. The script writes `data/storms/<id>.json`, and `GET /api/storms` lists every storm file present. Storm data is kept out of git: only `darragh-2024.json` is tracked, so after cloning run the script to get the others.
+**Historical observations:** Darragh is the tracked example. Other storm files are local products of `scripts/build_storm_benchmark.py`; `GET /api/storms` lists those actually present. Historical gusts come from Met Office UKV via Open-Meteo. Outage observations come from distribution feeds, so timing/place correlations are contextual checks, not validation of transmission failures, predicted counts or mitigation effectiveness. Coverage shading identifies where observations exist.
 
-The Monte Carlo reinforcement experiment, with mitigation planning and grid damage/repair logic, is in the backend (`POST /api/experiment`, IEEE 14-bus or GB) but has no UI.
+The old `POST /api/storm` single-storm pylon animation remains for compatibility and the offline sample. Offline mode is explicitly labelled and does not produce mitigation estimates. `POST /api/experiment` still supports IEEE14 and GB experiments independently.
 
 ## Great Britain network
 
@@ -26,11 +26,11 @@ python scripts/build_gb_network.py ../uk-grid-atlas
 
 The script clusters OSM line endpoints within 2 km into substations, merges parallel ways into multi-circuit branches, contracts series chains and keeps the largest connected component (about 88% of the atlas's route length). Stations with a stated capacity are attached to the nearest substation. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative. Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB experiment takes about 30 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
 
-## Multi-day damage and recovery (API)
+## Multi-day damage and recovery
 
 `POST /api/experiment` with `"mode": "multiday"` runs a 1–72 hour storm with probabilistic failures, weather-gated repairs by limited crews, and hourly reconnection. It accepts imported hourly weather JSON for historical exposure replay; `"mode": "legacy"` is the original five-hour experiment. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
 
-## Mitigations (API)
+## Mitigations
 
 The same endpoint compares reinforcement plans on shared storms: no action, two simple baselines, the greedy GridGuard selection, an optional `custom_lines` plan and, in multi-day mode, a `prepared` plan that reorders the repair queue. Each plan gets paired evidence and an illustrative cost/benefit from editable `economics` assumptions; `storm_type` picks one of three windstorm presets. On the GB grid, only the 24 most frequently failing lines are evaluated individually. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
 

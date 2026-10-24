@@ -4,6 +4,8 @@ import {checkRun} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
 import StormChart from './StormChart.jsx';
+import DecisionPanel from './DecisionPanel.jsx';
+import {portfolioRun, sameStormRequest, portfolioNames} from './planning.js';
 
 const PLAYBACK_MS = 22000; // a whole storm plays in about this long
 const TICK_MS = 1000 / 30;
@@ -23,6 +25,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
+  const [config,setConfig]=useState({seed:1,peak_gust:160,hours:36,storm_type:'single_peak',samples:16,budget:5,crews:6});
+  const [policy,setPolicy]=useState('none'),[draft,setDraft]=useState([]),[asset,setAsset]=useState('');
+  const [economics,setEconomics]=useState({cost_per_unit_gbp:10000,outage_value_gbp_per_mwh:1000,expected_events:1,asset_costs_gbp:{}});
+  const [playing,setPlaying]=useState(false);
+  const [importedWeather,setImportedWeather]=useState(null);
+  const shown=useMemo(()=>portfolioRun(run,policy),[run,policy]);
+  const update=(key,value)=>setConfig(c=>({...c,[key]:value}));
 
   // Storm list for the picker, and the intact grid to draw before the first run.
   useEffect(() => {
@@ -38,36 +47,38 @@ export default function App() {
       });
   }, []);
 
-  const timeline = useMemo(() => (run ? buildTimeline(run) : null), [run]);
+  const timeline = useMemo(() => (shown ? buildTimeline(shown) : null), [shown]);
 
   // Advance a continuous clock until the storm has passed. Time comes from
   // performance.now(), so motion stays smooth even if ticks are delayed. A timer
   // is used rather than requestAnimationFrame, which some embedded views never fire.
-  const playing = Boolean(timeline) && t < timeline.end;
   useEffect(() => {
-    if (!timeline) return undefined;
+    if (!timeline || !playing) return undefined;
     const msPerHour = Math.min(1800, Math.max(250, PLAYBACK_MS / timeline.end));
     const started = performance.now();
+    const initial=t;
     const id = setInterval(() => {
-      const next = Math.min(timeline.end, (performance.now() - started) / msPerHour);
+      const next = Math.min(timeline.end, initial + (performance.now() - started) / msPerHour);
       setT(next);
-      if (next >= timeline.end) clearInterval(id);
+      if (next >= timeline.end) {clearInterval(id);setPlaying(false)}
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [timeline]);
+  }, [timeline,playing]);
 
-  async function onSimulate() {
+  async function onSimulate(request=null,nextPolicy='none') {
     setBusy(true);
     setError('');
+    setPlaying(false);
     try {
       let result;
       try {
-        result = await simulate(scenario);
+        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null};
+        result = await simulate(parameters.scenario,parameters);
         setOffline(false);
       } catch (err) {
         if (!(err instanceof OfflineError)) throw err;
         setOffline(true);
-        if (scenario !== SYNTHETIC) throw new Error('Real storms need the backend running.');
+        if (request || scenario !== SYNTHETIC) throw new Error('Storm planning needs the backend running.');
         result = await loadSample();
       }
       const problem = checkRun(result);
@@ -75,6 +86,9 @@ export default function App() {
       setNetwork(result.network);
       setT(0);
       setRun(result);
+      setPolicy(nextPolicy);setPlaying(true);
+      if(request&&result.plan){setScenario(result.config.scenario);setImportedWeather(result.replay.request.weather);setConfig(c=>Object.fromEntries(Object.keys(c).map(k=>[k,result.config[k]])))}
+      if(result.plan){setDraft(result.plan.portfolios.custom?.selected||result.plan.portfolios.optimized.selected);setEconomics(result.plan.config.economics)}
     } catch (err) {
       setError(err.message);
     } finally {
@@ -86,9 +100,9 @@ export default function App() {
   let announcement = '';
   if (timeline) {
     const frame = timeline.frames[frameIndexAt(timeline, t)];
-    const pylons = frame.status.filter(s => s === 'pylon').length;
+    const pylons = frame.status.filter(s => s === 'pylon'||s==='weather').length;
     const tripped = frame.status.filter(s => s === 'overload').length;
-    const parts = [plural(pylons, 'pylon') + ' down', plural(tripped, 'line') + ' tripped'];
+    const parts = [plural(pylons, 'weather failure'), plural(tripped, 'line') + ' tripped'];
     let when = `Hour ${Math.min(timeline.lastHour, Math.max(0, Math.ceil(t)))} of ${timeline.lastHour}`;
     if (run.storm) {
       const hour = Math.min(run.storm.timestamps.length - 1, Math.max(0, Math.floor(t)));
@@ -104,7 +118,7 @@ export default function App() {
   return (
     <main className="page">
       <div className="map-wrap">
-        {network ? <UkMap network={network} run={run} timeline={timeline} t={t} /> : !error && <p className="note">Loading grid…</p>}
+        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
       <div className="panel">
@@ -112,18 +126,20 @@ export default function App() {
           <label className="visually-hidden" htmlFor="storm">
             Storm
           </label>
-          <select id="storm" value={scenario} onChange={e => setScenario(e.target.value)} disabled={busy || playing}>
-            <option value={SYNTHETIC}>Synthetic storm</option>
+          <select id="storm" value={scenario} onChange={e => setScenario(e.target.value)} disabled={busy}>
+            <option value={SYNTHETIC}>Synthetic storm</option>{importedWeather&&<option value="imported">Imported weather / predictions</option>}
             {storms.map(s => (
               <option key={s.id} value={s.id}>
                 {s.name} · {month(s.start)}
               </option>
             ))}
           </select>
-          <button type="button" className="simulate" onClick={onSimulate} disabled={busy || playing || !network}>
-            {busy ? 'Simulating…' : playing ? 'Storm in progress…' : 'Simulate'}
+          <button type="button" className="simulate" onClick={()=>onSimulate()} disabled={busy || !network}>
+            {busy ? 'Comparing plans…' : 'Simulate & compare'}
           </button>
         </div>
+        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        {timeline&&<div className="playback-controls"><button onClick={()=>{if(t>=timeline.end)setT(0);setPlaying(p=>!p)}}>{playing?'Pause':'Play'}</button><input aria-label="Storm playback hour" type="range" min="0" max={timeline.end} step="0.05" value={t} onChange={e=>{setPlaying(false);setT(Number(e.target.value))}}/><span>{portfolioNames[policy]||'Sample'}</span><button onClick={()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(run,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='gridguard-gb-plan.json';a.click();URL.revokeObjectURL(url)}}>Export</button></div>}
         {run?.storm && timeline ? (
           <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
         ) : (
@@ -131,6 +147,7 @@ export default function App() {
             <i style={{width: timeline ? `${(100 * t) / timeline.end}%` : 0}} />
           </div>
         )}
+        {run&&<p className="note">Completed run: {run.storm?.name||run.input_source||'Synthetic windstorm'} · seed {run.config.seed} · {run.config.hours} hours. {run.plan&&'Green routes are reinforced.'}</p>}
         <p className="status">{status}</p>
         <p className="visually-hidden" aria-live="polite">
           {announcement}
@@ -141,12 +158,13 @@ export default function App() {
             {error}
           </p>
         )}
-        {offline && <p className="note">Backend offline: using a bundled sample storm.</p>}
+        {offline && <p className="note">Backend offline: using the legacy sample animation. Mitigation comparison is unavailable until the backend is running.</p>}
         <p className="credit">
           Grid © OpenStreetMap contributors (ODbL) via uk-grid-atlas
           {run?.storm && <> · Gusts: Met Office UKV via Open-Meteo.com (CC BY 4.0), © Crown copyright</>}
         </p>
       </div>
+      <DecisionPanel run={run} policy={policy} setPolicy={key=>{setPlaying(false);setPolicy(key)}} draft={draft} setDraft={setDraft} economics={economics} setEconomics={setEconomics} busy={busy} asset={asset} setAsset={setAsset} rerun={()=>onSimulate(sameStormRequest(run,draft,economics),'custom')}/>
     </main>
   );
 }
@@ -161,7 +179,7 @@ function Comparison({run}) {
     <p className="note comparison">
       Real cuts peaked {hourLabel(b.peak_hour_observed)}, modelled risk {hourLabel(b.peak_hour_modelled)} (UTC); hourly
       correlation r = {fixed(b.timing_correlation, 2)}. Windiest third of areas ran at {fixed(b.rise_windiest_third, 1)}× their
-      normal outage rate, calmest third {fixed(b.rise_calmest_third, 1)}× (ρ = {fixed(b.place_rank_correlation, 2)}). Dots are{' '}
+      normal outage rate, calmest third {fixed(b.rise_calmest_third, 1)}× (ρ = {fixed(b.place_rank_correlation, 2)}). These are fixed weather-risk timing proxies, not a validation of mitigation outcomes. Dots are{' '}
       {s.operator} distribution faults, so this tests timing and place, not counts; shaded areas have outage data.
     </p>
   );

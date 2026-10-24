@@ -4,17 +4,17 @@ import {flashesAt, gustsAt, layerTime, mix, stateAt, stormAt} from './timeline.j
 
 const LINE = {400: '#a9bccb', 275: '#8399aa', 132: '#617888'};
 const WIDTH = {400: 1.5, 275: 1.1, 132: 0.75};
-const DOWN = {pylon: '#e5484d', overload: '#f2994a'};
+const DOWN = {weather: '#e5484d', pylon: '#e5484d', overload: '#f2994a'};
 const BUS = {powered: '#c9d6e2', dark: '#e5484d'};
 const OUTAGE = '#ffd27a';
 const lineColor = (status, kv) => (status === 'online' ? LINE[kv] || LINE[275] : DOWN[status] || DOWN.pylon);
 const isDark = (frame, i, load) => load > 0 && frame.served_by_bus[i] < load - 0.5;
-const STATUS_TEXT = {online: 'in service', pylon: 'pylon down', overload: 'tripped on overload'};
+const STATUS_TEXT = {weather: 'weather failure', online: 'in service', pylon: 'pylon down', overload: 'tripped on overload'};
 const quantize = (x, step) => Math.round(x / step) * step;
 
 // Everything is drawn from the simulation clock t, not CSS transitions, so the
 // map always shows exactly the state at time t.
-export default function UkMap({network, run, timeline, t}) {
+export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect}) {
   const geo = useMemo(() => mapFrame(network.buses), [network]);
   const shapes = useMemo(() => {
     const index = new Map(network.buses.map((b, i) => [b.id, i]));
@@ -55,7 +55,7 @@ export default function UkMap({network, run, timeline, t}) {
           pointerEvents="none"
         />
       )}
-      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} />
+      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} />
       <Buses network={network} positions={shapes.buses} state={state} fadeStep={fadeStep} />
       {run?.outages && timeline && <Outages outages={run.outages} times={timeline.outageTimes} geo={geo} t={layerTime(t)} />}
       {timeline &&
@@ -80,7 +80,7 @@ export default function UkMap({network, run, timeline, t}) {
 }
 
 // Lines and buses only change at an hourly event and during its short fade.
-const Lines = memo(function Lines({network, routes, state, geo}) {
+const Lines = memo(function Lines({network, routes, state, geo, hardened, selected, onSelect}) {
   return (
     <g>
       {network.branches.map((e, i) => {
@@ -90,21 +90,22 @@ const Lines = memo(function Lines({network, routes, state, geo}) {
         const fallen = status === 'pylon' ? state.frame.fallen_at?.[i] : null;
         const at = fallen ? geo.px(fallen[0], fallen[1]) : null;
         return (
-          <g key={e.id}>
+          <g key={e.id} role="button" tabIndex={0} aria-label={`Inspect ${e.id}`} onClick={()=>onSelect?.(e.id)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSelect?.(e.id)}}}>
             <polyline
               points={routes[i].points}
               fill="none"
-              stroke={mix(lineColor(before, e.kv), lineColor(status, e.kv), state ? state.fade : 1)}
-              strokeWidth={WIDTH[e.kv] || 1}
+              stroke={selected===e.id?'#fff':status==='online'&&hardened?.includes(e.id)?'#a8dc81':mix(lineColor(before, e.kv), lineColor(status, e.kv), state ? state.fade : 1)}
+              strokeWidth={(WIDTH[e.kv] || 1)+(hardened?.includes(e.id)?1:0)+(selected===e.id?1:0)}
               strokeDasharray={down ? '3 2.5' : undefined}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
               <title>
-                {e.name || e.id}
+                {e.id} · {e.name || 'Transmission branch'}
                 {e.kv ? ` · ${e.kv} kV` : ''} · {STATUS_TEXT[status] || status}
               </title>
             </polyline>
+            <polyline points={routes[i].points} fill="none" stroke="transparent" strokeWidth="9" />
             {at && (
               <path
                 d={`M${at[0] - 3},${at[1] - 3}L${at[0] + 3},${at[1] + 3}M${at[0] + 3},${at[1] - 3}L${at[0] - 3},${at[1] + 3}`}
@@ -120,7 +121,7 @@ const Lines = memo(function Lines({network, routes, state, geo}) {
       })}
     </g>
   );
-}, (a, b) => a.network === b.network && a.routes === b.routes && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep);
+}, (a, b) => a.network === b.network && a.routes === b.routes && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep && a.hardened === b.hardened && a.selected === b.selected && a.onSelect === b.onSelect);
 
 const Buses = memo(function Buses({network, positions, state}) {
   return (

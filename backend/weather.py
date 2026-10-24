@@ -54,11 +54,18 @@ def validate_weather(profile, branches):
     previous = None
     supplied_predictions = [isinstance(row, dict) and 'failure_probability' in row for row in hours]
     prediction_dates = {}
+    engineering = profile.get('engineering_model')
+    if engineering is not None and (not isinstance(engineering,dict) or engineering.get('name')!='route-pylon-v1'):
+        raise ValueError('Unknown engineering probability model')
     if any(supplied_predictions):
         if not all(supplied_predictions): raise ValueError('Supply failure_probability for every hour or none')
         branch_ids = profile.get('branch_ids')
         if not isinstance(branch_ids,list) or len(branch_ids)!=branches or any(not isinstance(i,str) for i in branch_ids) or len(set(branch_ids))!=branches:
             raise ValueError('ML exposures require ordered, unique branch_ids for every branch')
+        prediction = profile.get('prediction')
+        if engineering is not None and prediction is not None:
+            raise ValueError('Use engineering_model or prediction provenance, not both')
+    if any(supplied_predictions) and engineering is None:
         prediction = profile.get('prediction')
         if not isinstance(prediction, dict) or any(not isinstance(prediction.get(k), str) or not prediction[k].strip()
                                                    for k in ('model_version', 'training_cutoff', 'issued_at')):
@@ -84,7 +91,7 @@ def validate_weather(profile, branches):
         if previous is not None and stamp - previous != timedelta(hours=1):
             raise ValueError('Weather records must be consecutive hourly timestamps')
         previous = stamp
-        for key, maximum in [('gust_kmh', 300), ('rain_mm_h', 300)]:
+        for key, maximum in [('gust_kmh', 600), ('rain_mm_h', 300)]:
             value = row.get(key)
             if isinstance(value, bool): raise ValueError(f'Invalid {key}')
             try: array = np.asarray(value, dtype=float)

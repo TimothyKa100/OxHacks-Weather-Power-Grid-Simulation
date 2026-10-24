@@ -159,6 +159,7 @@ def simulate(net, scenario, hardened=(), playback=False):
             'failed_mask':ever_failed.astype(int).tolist()}
 
 _pool=None
+_parallel_unavailable=False
 _worker_nets={}
 
 def _simulate_portfolios(args):
@@ -168,8 +169,8 @@ def _simulate_portfolios(args):
 
 def evaluate_many(net, bank, portfolios):
     """Results[portfolio][scenario]. Parallel over scenarios for large networks; same draws either way."""
-    global _pool
-    if net.m<PARALLEL_MIN_BRANCHES or len(bank)<2:
+    global _pool, _parallel_unavailable
+    if net.m<PARALLEL_MIN_BRANCHES or len(bank)<2 or _parallel_unavailable:
         rows=[[simulate(net,s,p) for p in portfolios] for s in bank]
     else:
         if _pool is None:
@@ -178,7 +179,15 @@ def evaluate_many(net, bank, portfolios):
             # forkserver does not exist on Windows; spawn is the portable fallback.
             method='forkserver' if 'forkserver' in multiprocessing.get_all_start_methods() else 'spawn'
             _pool=ProcessPoolExecutor(max_workers=MAX_WORKERS,mp_context=multiprocessing.get_context(method))
-        rows=list(_pool.map(_simulate_portfolios,[(net.name,s,portfolios) for s in bank]))
+        try:
+            rows=list(_pool.map(_simulate_portfolios,[(net.name,s,portfolios) for s in bank]))
+        except PermissionError:
+            # Restricted hosts may forbid worker sockets. Identical deterministic
+            # scenarios can still be evaluated locally; physical solve errors propagate.
+            _parallel_unavailable=True
+            _pool.shutdown(wait=False,cancel_futures=True)
+            _pool=None
+            rows=[[simulate(net,s,p) for p in portfolios] for s in bank]
     return [[row[k] for row in rows] for k in range(len(portfolios))]
 
 def evaluate(net, bank, selected):

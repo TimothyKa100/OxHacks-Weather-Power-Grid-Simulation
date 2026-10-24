@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .storm import GUSTINESS, altitude_factor, model_info, route_samples, simulate_gusts
+from .storm import GUSTINESS, altitude_factor, model_info, route_samples, simulate_gusts, planning_exposure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,6 +142,8 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     cell_w, cell_h = step*proj.k, step/(proj.y1-proj.y0)
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
     return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames,
+            'planning_weather':planning_exposure(net,frames,hazard,storm['timestamps'],
+                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility"),
             'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],
