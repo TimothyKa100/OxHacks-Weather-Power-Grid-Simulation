@@ -28,6 +28,10 @@ The script clusters OSM line endpoints within 2 km into substations, merges para
 
 The dashboard now defaults to a 48-hour synthetic storm with probabilistic failures and limited repair crews. Import hourly weather JSON for historical exposure replay, or select the original five-hour demo. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.
 
+## Decision support prototype
+
+Residents receive general preparedness guidance. Organisations can compare repair priorities, choose suggested or custom reinforcements, and rerun the same storm. Editable financial assumptions show avoided-loss/cost ratios and break-even event counts. Three synthetic windstorm presets support stress tests. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
+
 ## Run the demo
 
 Requires Python **3.11–3.14**. Python 3.13.5 was tested on Windows. The release ZIP includes the built frontend, so Node is optional for running it.
@@ -72,14 +76,14 @@ For hot reload, run Flask in one terminal and `cd frontend; npm run dev` in anot
 
 ## A 90-second demo
 
-1. Use the default **100 km/h, seed 26, 128 scenarios, 5 budget units**. Click **Run experiment** if you changed anything.
+1. Select **Original 5-hour demo** and use **100 km/h, seed 26, 128 scenarios, 5 budget units**. Click **Run experiment** if you changed anything.
 2. Look at the four summary cards, then choose **No action** and move the hour slider from intact through the storm. Dashed pink branches failed in weather; orange branches tripped in a cascade.
 3. Click **Reinforced** or **Compare**. Green branches are the chosen investments. Click a line to inspect power, loading, local gust and Monte Carlo trip frequency; click a bus to inspect generation, shed load and island membership.
 4. Use **Play cascade** for hourly playback. Within-hour event buttons expose the weather hit and subsequent simultaneous overload trip batches individually. Playback uses the same scenario for all portfolios: the median unmitigated held-out loss, selected without inspecting intervention performance.
 5. Switch between **GridGuard**, **weather risk**, and **power-flow** selection. The comparison table always retains all four portfolios, including no action.
 6. Reduce the budget to zero, change intensity or seed, and rerun. A banner marks changed controls so old results cannot be mistaken for a new run. **Export run** downloads the complete JSON, including settings, portfolios, uncertainty estimates and playback frames.
 
-The default reproducible result is:
+The reproducible result for the **original five-hour mode** is:
 
 | Portfolio | Spend | Mean unserved energy (MWh) | Monte Carlo SE (MWh) | Major outage probability |
 | --- | ---: | ---: | ---: | ---: |
