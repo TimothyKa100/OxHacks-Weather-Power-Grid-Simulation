@@ -34,6 +34,19 @@ The script clusters OSM line endpoints within 2 km into substations, merges para
 
 The same endpoint compares reinforcement plans on shared storms: no action, two simple baselines, the greedy GridGuard selection, an optional `custom_lines` plan and, in multi-day mode, a `prepared` plan that reorders the repair queue. Each plan gets paired evidence and an illustrative cost/benefit from editable `economics` assumptions; `storm_type` picks one of three windstorm presets. On the GB grid, only the 24 most frequently failing lines are evaluated individually. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
 
+## Reliable web preview
+
+From the repository root, install frontend dependencies once (`cd frontend`, `npm ci`, then `cd ..`). With Python requirements already installed, start the built frontend and API together:
+
+```bash
+.venv/bin/python scripts/serve_preview.py
+```
+
+On Windows use `.venv\Scripts\python.exe scripts/serve_preview.py`.
+Open **http://127.0.0.1:5001/** and keep that terminal running. For a hosted preview, add `--host 0.0.0.0 --port 5173` (or the port exposed by your host). Both the app and API use the same port. Use `--skip-build` only when a frontend build already exists.
+
+A GitHub branch URL displays source files; the interactive demo needs this running HTTP server. The separate Vite development server still needs Flask running on port 5001 for simulations. A stopped API is labelled as offline; the bundled sample cannot evaluate mitigation plans.
+
 ## Run the demo
 
 Requires Python **3.11–3.14**. Python 3.13.5 was tested on Windows. The release ZIP includes the built frontend, so Node is optional for running it.

@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {OfflineError, fetchStorms, loadSample, simulate} from './api.js';
-import {checkRun} from './schema.js';
+import {checkRun, checkNetwork} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
 import StormChart from './StormChart.jsx';
@@ -38,12 +38,21 @@ export default function App() {
     fetchStorms()
       .then(list => {
         setStorms(list.storms || []);
-        if (list.network) setNetwork(list.network);
+        const problem=checkNetwork(list.network);
+        if(problem)throw new Error(`Unexpected network data: ${problem}`);
+        setNetwork(list.network);
       })
       .catch(async err => {
         if (!(err instanceof OfflineError)) return setError(err.message);
         setOffline(true);
-        setNetwork((await loadSample()).network);
+        try {
+          const sample=await loadSample();
+          const problem=checkRun(sample);
+          if(problem)throw new Error(problem);
+          setNetwork(sample.network);
+        } catch {
+          setError('The API is unreachable and the sample could not load. Start the combined preview server and reload.');
+        }
       });
   }, []);
 
