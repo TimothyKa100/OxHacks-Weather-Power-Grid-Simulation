@@ -1,5 +1,10 @@
 # Predictions → preparedness → decisions
 
+In this branch these features are API-only: the dashboard described below was not merged.
+`POST /api/experiment` returns the plans, evidence and cost/benefit (`portfolios`,
+`decisions`); send `custom_lines`, `economics` and `storm_type` to change them, and the
+`replay.request` from a response to rerun the same storm.
+
 ## Two audiences
 
 Residents and pedestrians receive general outage preparedness guidance and links to

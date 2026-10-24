@@ -1,14 +1,14 @@
 # Multi-day storm replay prototype
 
-The dashboard defaults to a 48-hour synthetic storm followed by recovery. Choose 24,
-48 or 72 hours and 1–10 crews. The original five-hour experiment remains available.
-Multi-day comparisons support 16–128 held-out scenarios through the API (64/128 in
-UI). All strategies use the same weather and random failure/repair draws; selection
+This mode is API-only in this branch (the dashboard that exposed it was not merged):
+`POST /api/experiment` with `"mode": "multiday"`, `hours` 1–72 and `crews` 1–40.
+`"mode": "legacy"` is the original five-hour experiment.
+Multi-day comparisons support 16–128 held-out scenarios. All strategies use the same weather and random failure/repair draws; selection
 uses a separate 24-scenario training bank. Long runs may take longer than the demo.
 
 ## Historical exposures
 
-Use Import hourly weather JSON in the sidebar. Up to 72 consecutive hourly records
+Send hourly weather JSON as the request's `weather` field. Up to 72 consecutive hourly records
 are accepted. Timestamps must include a timezone. Gust is km/h, rainfall is mm/h.
 Each value can be a scalar applied to all branches or an array in the branch order
 returned by `/api/network` (L01–L20). Example:
