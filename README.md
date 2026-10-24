@@ -8,7 +8,9 @@ Flask + NumPy backend, React 18 frontend. The electrical network is the real **I
 
 Requires Python **3.11–3.14**. Python 3.13.5 was tested on Windows. The release ZIP includes the built frontend, so Node is optional for running it.
 
-From this `gridguard` directory, in PowerShell:
+Run commands from the repository root (the directory containing `backend/`, `frontend/`, and `requirements.txt`). The release ZIP wraps this same layout in a single `gridguard/` directory.
+
+In PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -23,6 +25,8 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m backend.app
 ```
+
+For a source checkout, build the frontend using the **Edit and rebuild** steps below before opening the dashboard. Release ZIPs already include that build.
 
 Open **http://127.0.0.1:5001**. Keep the terminal running; Ctrl+C stops it. Everything runs locally. Initial experiments take a few seconds; repeat settings are cached. The Flask development server binds to loopback and is intended for this local demo.
 
@@ -72,7 +76,7 @@ Read `data/sample_run.json` for authoritative unrounded-to-display results. Grid
 - **Power flow:** a lossless DC angle solve uses benchmark series reactance and transformer taps. Every island gets its own reference angle. Scheduled generation scales down for a surplus or draws on proportional headroom for a deficit; available capacity caps supply. Demand is shed proportionally within an undersupplied island. Shed loads remain disconnected through the event. The solver checks bus-level active-power conservation.
 - **Cascades:** weather failures happen first in a window. Recompute DC flow, trip all surviving branches over rating together, recompute again, repeat until stable. Playback records the overloaded pre-trip flow and each recomputed state. Cascade rounds have zero duration in the energy accounting. Every round removes a branch, so termination is bounded by 20 removals.
 - **Thermal ratings:** the case14 ratings are not useful here, so the demo assumes `max(22 MW, 1.55 × abs(intact DC flow) + 8 MW)`. These are active-power proxies, not original IEEE equipment ratings or MVA ratings. Branch costs repeat 1, 2, 3 budget units; exposures repeat deterministically between 0.75 and 1.25.
-- **Monte Carlo:** 24 training storms select reinforcement. A separately seeded held-out bank of 64–512 storms evaluates all portfolios using common random numbers. Optimization never sees held-out outcomes. Seed controls both banks, with a fixed XOR domain separation for training.
+- **Monte Carlo:** 24 training storms select reinforcement. A separately seeded held-out bank of 16–512 storms (64–512 in the UI) evaluates all portfolios using common random numbers. Optimization never sees held-out outcomes. Seed controls both banks, with a fixed XOR domain separation for training.
 - **Selection:** greedy positive marginal training mean energy-loss reduction divided by cost. It stops when nothing affordable improves the objective, so it may leave budget unused. It is a heuristic, not an exact knapsack/global optimum. Added edges surviving longer can redistribute flows, so benefit is not assumed monotonic.
 - **Baselines:** no action; descending mean training fragility/cost; descending absolute intact power-flow/cost. The third is an electrical-flow baseline, not graph betweenness or an optimal dispatch.
 - **Metrics:** energy not served sums settled MW shed over five one-hour windows; expected energy is the Monte Carlo mean. P95 is the empirical 95th percentile. Major outage means final load shed strictly exceeds 50% of original demand. SE is the sample standard deviation divided by √N. Paired SE is computed on per-storm before-minus-after differences. These quantify simulation sampling noise only.
