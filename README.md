@@ -10,6 +10,8 @@ A storm crossing the Great Britain transmission grid, one hour at a time: wind �
 
 The dashboard runs one seeded storm (`POST /api/storm` with `peak_gust`, `hours`, `seed`) and plays it back on the map. Spans, fragility, ratings, dispatch and demand are illustrative, not utility data.
 
+**Real storm benchmark.** The "Real: Storm Darragh" tab replays 6–8 December 2024 with hourly Met Office UKV gusts, scaled from the weather model's terrain to each route's real height. It overlays the 2,101 real NGED power cuts that started in those 60 hours, and compares two things. Timing: modelled pylon risk per hour against real outage starts per hour. Place: each 0.25° area's peak gust against how far its outages rose above the area's normal daily rate. Those outages are distribution faults, not transmission pylons, so this tests where and when the risk lands, not how many things break. Rebuild with `python scripts/build_storm_benchmark.py /path/to/unplanned_outages.csv`.
+
 The older Monte Carlo / reinforcement experiment (`POST /api/experiment`, IEEE 14-bus or GB) is still in the backend but has no UI.
 
 ## Great Britain network

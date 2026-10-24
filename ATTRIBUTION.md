@@ -35,6 +35,13 @@ Derived from OSM: line routes and voltage classes (132/275/400 kV), substation p
 
 Terrain heights for every substation and for route sample points every ~2 km (`ele_m`, `samples`, `ele_max_m`, `ele_mean_m` in `data/gb_network.json`) come from **EU-DEM v1.1** (25 m), produced by the Copernicus Land Monitoring Service with funding from the European Union, queried through the public OpenTopoData API (https://www.opentopodata.org/datasets/eudem/). Raw responses are cached in `data/gb_elevation_cache.json` so rebuilds need no network. Heights are of the terrain at the route sample point, not of individual surveyed pylon sites; sea and no-data points are treated as 0 m.
 
+## Storm Darragh benchmark (outages and weather)
+
+`data/storms/darragh_2024.json` is built by `scripts/build_storm_benchmark.py`.
+
+- **Outages:** NGED unplanned power cuts from the git-scraped feed jmcharter/nationalgrid-outage-history, as processed in the companion outage dataset (`processed/unplanned_outages.csv`). Only NGED's licence areas are covered. Start times are first-snapshot sightings (the scraper polled roughly every 20 min to 3 h that weekend). Incidents that restart at the same location within 4 h of another ending there are treated as the feed re-issuing an id and dropped (1,286 in the storm window, including a 1,102-incident batch at 22:03 UTC on 8 Dec 2024).
+- **Weather:** hourly 10 m wind gusts from the Met Office UKV model (`ukmo_seamless`) via the Open-Meteo historical forecast API, sampled on a 0.25° grid. Weather data by Open-Meteo.com, licensed CC BY 4.0. Met Office data © Crown copyright, Open Government Licence.
+
 ## Browser runtime dependencies
 
 The built browser app includes React, ReactDOM and Scheduler under their MIT licences, retained in `third_party/`. Other packages are installed from their upstream distributions with their own licences; the Python environment and Node dependency tree are excluded from the downloadable release.

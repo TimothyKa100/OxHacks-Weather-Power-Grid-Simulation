@@ -54,17 +54,18 @@ def storm_path(net, hours, rng):
     return centre, strength
 
 
-def run_storm(net, peak_gust=160, hours=36, seed=1):
-    rng = np.random.default_rng(seed)
+def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
+    """Core engine. gust_at(t) -> gust (km/h, at the pylon) for every route sample in hour t.
+
+    Returns hourly frames plus the per-sample collapse hazard of every hour (for benchmarking).
+    """
     samples = route_samples(net)
     line_of = samples['line']
-    centre, strength = storm_path(net, hours, rng)
-
     active = np.ones(net.m, bool)
     status = ['online']*net.m
     fallen_at = [None]*net.m
     demand = net.load.copy()
-    frames = []
+    frames, hazards = [], []
 
     def snapshot(hour, gust, line_probability, events, centre_xy, radius):
         nonlocal demand
@@ -89,11 +90,10 @@ def run_storm(net, peak_gust=160, hours=36, seed=1):
         if reclosed: events.append({'type': 'reclose', 'lines': [net.branches[i]['id'] for i in reclosed]})
         demand = net.load.copy()
 
-        distance = np.sum((samples['xy']-centre[t])**2, axis=1)
-        field = peak_gust*strength[t]*(.3+.7*np.exp(-distance/(2*STORM_SIGMA**2)))  # sea-level gust
-        gust = field*rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
+        gust = gust_at(t)
         # Hazard per sample = its pylons times -log(survival of one pylon); a line sums its samples.
         hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust), 1-1e-12))
+        hazards.append(hazard)
         line_probability = -np.expm1(-np.bincount(line_of, hazard, net.m))
         fell = np.flatnonzero(active & (rng.random(net.m) < line_probability))
         for i in fell:
@@ -104,18 +104,36 @@ def run_storm(net, peak_gust=160, hours=36, seed=1):
             events.append({'type': 'pylon', 'line': net.branches[i]['id'], 'at': fallen_at[i],
                            'ele_m': float(samples['ele'][k]), 'gust_kmh': round(float(gust[k]), 1)})
         line_gust = np.zeros(net.m); np.maximum.at(line_gust, line_of, gust)
-        storm_xy = [round(float(c), 4) for c in centre[t]]
-        loading = snapshot(t+1, line_gust, line_probability, events, storm_xy, STORM_SIGMA)
+        storm_xy, radius = marker(t)
+        loading = snapshot(t+1, line_gust, line_probability, events, storm_xy, radius)
         for _ in range(net.m+1):
             over = np.flatnonzero(active & (loading > 1+1e-8))
             if not len(over): break
             for i in over: active[i] = False; status[i] = 'overload'
             events.append({'type': 'overload', 'lines': [net.branches[i]['id'] for i in over]})
             frames.pop()  # keep one settled frame per hour
-            loading = snapshot(t+1, line_gust, line_probability, events, storm_xy, STORM_SIGMA)
+            loading = snapshot(t+1, line_gust, line_probability, events, storm_xy, radius)
         else: raise RuntimeError('Cascade failed to terminate')
-    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed},
-            'model': {'pylon_median_gust_kmh': PYLON_MEDIAN_GUST, 'pylon_beta': PYLON_BETA,
-                      'altitude_factor': 'c_alt = 1 + 0.001 x elevation x (10 / tower height)^0.2',
-                      'route_samples': int(len(line_of))},
-            'frames': frames}
+    return frames, np.array(hazards)
+
+
+def model_info(net):
+    return {'pylon_median_gust_kmh': PYLON_MEDIAN_GUST, 'pylon_beta': PYLON_BETA,
+            'altitude_factor': 'c_alt = 1 + 0.001 x elevation x (10 / tower height)^0.2',
+            'route_samples': int(len(route_samples(net)['line']))}
+
+
+def run_storm(net, peak_gust=160, hours=36, seed=1):
+    """Synthetic depression crossing the network south-west to north-east."""
+    rng = np.random.default_rng(seed)
+    samples = route_samples(net)
+    centre, strength = storm_path(net, hours, rng)
+
+    def gust_at(t):
+        distance = np.sum((samples['xy']-centre[t])**2, axis=1)
+        field = peak_gust*strength[t]*(.3+.7*np.exp(-distance/(2*STORM_SIGMA**2)))  # sea-level gust
+        return field*rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
+
+    marker = lambda t: ([round(float(c), 4) for c in centre[t]], STORM_SIGMA)
+    frames, _ = simulate_gusts(net, hours, gust_at, rng, marker)
+    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames}

@@ -7,6 +7,7 @@ from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from .simulation import NETWORKS, Network, run_experiment
 from .weather import validate_weather
 from .storm import run_storm
+from .benchmark import STORMS, run_real_storm
 
 ROOT=Path(__file__).resolve().parents[1]
 app=Flask(__name__,static_folder=str(ROOT/'frontend/dist'),static_url_path='')
@@ -31,6 +32,13 @@ def network():
 def storm():
     data=request.get_json(silent=True)
     if not isinstance(data,dict): return jsonify({'error':'Expected a JSON object'}),400
+    scenario=data.get('scenario','synthetic')
+    if scenario!='synthetic':
+        if scenario not in STORMS: return jsonify({'error':f'scenario must be synthetic or one of {", ".join(STORMS)}'}),400
+        seed=data.get('seed',1)
+        if isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<=2147483647:
+            return jsonify({'error':'seed must be an integer between 0 and 2147483647'}),400
+        return jsonify({**run_real_storm(nets['gb'],scenario,seed),'network':nets['gb'].payload()})
     limits={'peak_gust':(160,60,250),'hours':(36,6,72),'seed':(1,0,2147483647)}
     params={}
     for key,(default,low,high) in limits.items():

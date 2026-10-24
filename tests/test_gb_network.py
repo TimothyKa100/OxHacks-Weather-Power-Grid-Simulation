@@ -93,3 +93,26 @@ def test_elevation_raises_gust_and_collapse_risk():
     assert altitude_factor(400, 27) > altitude_factor(400, 50)  # wind speed-up is diluted for taller towers
     sea, hill = pylon_failure_probability(170*altitude_factor(np.array([0, 400]), 50))
     assert hill > 20*sea
+
+
+def test_darragh_benchmark(gb):
+    from backend.benchmark import run_real_storm, bilinear
+    r = run_real_storm(gb, 'darragh-2024', 1)
+    b = r['benchmark']
+    assert len(r['frames']) == r['config']['hours']+1 == len(r['storm']['timestamps'])+1
+    assert sum(b['observed_per_hour']) == len(r['outages']) > 1000
+    assert all(v >= 0 for v in b['modelled_per_hour']) and max(b['modelled_per_hour']) > 0
+    assert -1 <= b['timing_correlation'] <= 1 and -1 <= b['place_rank_correlation'] <= 1
+    assert len(b['cells']) > 20 and b['rise_windiest_third'] > 0
+    assert run_real_storm(gb, 'darragh-2024', 1)['benchmark'] == b
+    # Bilinear interpolation reproduces grid nodes and skips missing corners.
+    grid = np.array([[1., 2.], [3., np.nan]]); lons = np.array([0., 1.]); lats = np.array([0., 1.])
+    assert bilinear(grid, lons, lats, np.array([0., 1.]), np.array([0., 0.])).tolist() == [1., 2.]
+    assert bilinear(grid, lons, lats, np.array([.5]), np.array([.5]))[0] == pytest.approx(2.)
+
+
+def test_storm_api_real_scenario():
+    client = app.test_client()
+    ok = client.post('/api/storm', json={'scenario': 'darragh-2024', 'seed': 2})
+    assert ok.status_code == 200 and 'benchmark' in ok.get_json()
+    assert client.post('/api/storm', json={'scenario': 'nope'}).status_code == 400
