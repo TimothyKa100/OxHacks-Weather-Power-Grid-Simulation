@@ -142,9 +142,14 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1, median_gust=265., dispe
     ox, oy = proj.xy([o[0] for o in storm['outages']], [o[1] for o in storm['outages']])
     cell_w, cell_h = step*proj.k, step/(proj.y1-proj.y0)
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
+    exposure=planning_exposure(net,frames,hazard,storm['timestamps'],
+                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",median_gust,dispersion)
+    from .ml_risk import route_weather_features
+    exposure['ml_weather_source']='UKV route gusts before terrain correction and gust noise; different weather product from ERA5 training. Rain, temperature and direction unavailable.'
+    for row,features in zip(exposure['hours'],route_weather_features(net,sample_gust)):
+        row['ml_weather']=features
     return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net,median_gust,dispersion), 'frames': frames,
-            'planning_weather':planning_exposure(net,frames,hazard,storm['timestamps'],
-                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",median_gust,dispersion),
+            'planning_weather':exposure,
             'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],

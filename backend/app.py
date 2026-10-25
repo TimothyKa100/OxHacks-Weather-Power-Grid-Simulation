@@ -67,11 +67,13 @@ def storm_plan():
         if weather is not None and data.get('fragility') is not None and fragility!={'median_gust':265.,'dispersion':.12}:
             raise ValueError('Imported probabilities already define fragility; change the source profile instead')
         if failure_mode=='hybrid':
-            dates=([r['timestamp'] for r in weather['hours']] if weather is not None else
-                   [r['timestamp'] for r in storm_context(nets['gb'],scenario,params['peak_gust'],params['hours'],params['seed'],preset,**fragility)['planning_weather']['hours']])
-            validate_pair(pair,[e['id'] for e in nets['gb'].branches],dates)
             if weather is not None and 'failure_probability' not in weather['hours'][0]:
                 raise ValueError('Hybrid imported weather must include engineering probabilities')
+            exposure=weather if weather is not None else storm_context(nets['gb'],scenario,params['peak_gust'],params['hours'],params['seed'],preset,**fragility)['planning_weather']
+            dates=[r['timestamp'] for r in exposure['hours']]
+            if pair is not None: validate_pair(pair,[e['id'] for e in nets['gb'].branches],dates)
+            elif weather is not None and any('ml_weather' not in row for row in exposure['hours']):
+                raise ValueError('Built-in hybrid imported weather requires raw ml_weather features; alternatively supply paired predictions')
         elif pair is not None: raise ValueError('Select hybrid mode to use paired predictions')
         params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather,
                       failure_mode=failure_mode,hybrid_profile=pair,hybrid=hybrid,fragility=fragility)
@@ -81,6 +83,8 @@ def storm_plan():
         return jsonify({'error':'An experiment is running. Try again shortly.'}),429
     try:
         return jsonify(cached_storm_plan(json.dumps(params,sort_keys=True)))
+    except (ValueError,ImportError) as exc:
+        return jsonify({'error':str(exc)}),400
     finally:
         experiment_lock.release()
 
@@ -113,7 +117,7 @@ def corridor_risk_files():
 
 @app.get('/api/corridor-risk')
 def corridor_risk():
-    """A display layer only: these probabilities never enter the line-failure simulation."""
+    """Raw area-risk display layer; the hybrid separately derives a relative signal."""
     files=corridor_risk_files()
     layer=request.args.get('id')
     if layer is None:

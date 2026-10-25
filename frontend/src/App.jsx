@@ -25,15 +25,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
-  const [config,setConfig]=useState({seed:1,peak_gust:160,hours:36,storm_type:'single_peak',samples:16,budget:5,crews:6});
+  const [config,setConfig]=useState({seed:7,peak_gust:190,hours:12,storm_type:'single_peak',samples:16,budget:5,crews:6});
   const [policy,setPolicy]=useState('none'),[draft,setDraft]=useState([]),[asset,setAsset]=useState('');
   const [economics,setEconomics]=useState({cost_per_unit_gbp:10000,outage_value_gbp_per_mwh:1000,expected_events:1,asset_costs_gbp:{}});
   const [playing,setPlaying]=useState(false);
   const [importedWeather,setImportedWeather]=useState(null);
-  const [failureMode,setFailureMode]=useState('engineering'),[hybridProfile,setHybridProfile]=useState(null);
+  const [failureMode,setFailureMode]=useState('hybrid'),[hybridProfile,setHybridProfile]=useState(null);
   const [hybrid,setHybrid]=useState({beta:.5,min_multiplier:.5,max_multiplier:2});
   const [fragility,setFragility]=useState({median_gust:265,dispersion:.12});
-  // Corridor outage-risk layer: drawn beside the engineering line model, never simulated.
+  // Optional raw corridor overlay; the built-in hybrid uses a bounded relative signal.
   const [riskLayers,setRiskLayers]=useState([]);
   const [riskId,setRiskId]=useState('');
   const [riskLayer,setRiskLayer]=useState(null);
@@ -158,6 +158,7 @@ export default function App() {
     const pylons = frame.status.filter(s => s === 'pylon'||s==='weather').length;
     const tripped = frame.status.filter(s => s === 'overload').length;
     const parts = [plural(pylons, 'weather failure'), plural(tripped, 'line') + ' tripped'];
+    if(frame.node_status)parts.push(`${plural(frame.nodes_out_of_supply,'node')} without supply`,`${plural(frame.nodes_reduced_supply,'node')} with reduced supply`);
     let when = `Hour ${Math.min(timeline.lastHour, Math.max(0, Math.ceil(t)))} of ${timeline.lastHour}`;
     if (run.storm) {
       const hour = Math.min(run.storm.timestamps.length - 1, Math.max(0, Math.floor(t)));
@@ -182,7 +183,7 @@ export default function App() {
             Storm
           </label>
           <select id="storm" value={scenario} onChange={e => setScenario(e.target.value)} disabled={busy}>
-            <option value={SYNTHETIC}>Synthetic storm</option>{importedWeather&&<option value="imported">Imported weather / predictions</option>}
+            <option value={SYNTHETIC}>Synthetic storm · stress-test assumptions</option>{importedWeather&&<option value="imported">Imported weather / predictions</option>}
             {storms.map(s => (
               <option key={s.id} value={s.id}>
                 {s.name} · {month(s.start)}
@@ -194,7 +195,7 @@ export default function App() {
           </button>
         </div>
         <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());if(profile.prediction_unit==='paired_risk_modifier'){setHybridProfile(profile);setFailureMode('hybrid');setError('');return}if(profile.prediction_unit==='line_corridor_area_risk'){loadRiskFile(profile);setError('');return}setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
-        <details className="scenario-settings"><summary>Failure model: engineering or experimental hybrid</summary><div className="financial-fields"><label>Simulation probability<select aria-label="Simulation probability" value={failureMode} disabled={busy} onChange={e=>setFailureMode(e.target.value)}><option value="engineering">Engineering baseline</option><option value="hybrid">Experimental hybrid hazard</option></select></label>{Object.entries(hybrid).map(([key,value])=><label key={key}>{key}<input type="number" step="0.05" min={key==='beta'?0:key==='min_multiplier'?.05:1} max={key==='beta'?2:key==='min_multiplier'?1:10} value={value} onChange={e=>setHybrid(h=>({...h,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}{Object.entries(fragility).map(([key,value])=><label key={key}>Assumed {key}<input type="number" min={key==='median_gust'?150:.02} max={key==='median_gust'?500:1} step={key==='median_gust'?5:.01} disabled={scenario==='imported'} value={value} onChange={e=>setFragility(f=>({...f,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}</div><p className="note">Import a paired_risk_modifier JSON using the importer above. Its hours must match the selected storm exactly. {hybridProfile?`Loaded ${hybridProfile.prediction?.model_version} and its reference.`:'No paired model loaded.'} Raw corridor layers remain display-only. Hybrid settings are scenario assumptions, not fitted transmission calibration.</p></details>
+        <details className="scenario-settings"><summary>Failure model: engineering or experimental hybrid</summary><div className="financial-fields"><label>Simulation probability<select aria-label="Simulation probability" value={failureMode} disabled={busy} onChange={e=>setFailureMode(e.target.value)}><option value="engineering">Engineering baseline</option><option value="hybrid">Engineering + relative ML risk</option></select></label>{Object.entries(hybrid).map(([key,value])=><label key={key}>{key}<input type="number" step="0.05" min={key==='beta'?0:key==='min_multiplier'?.05:1} max={key==='beta'?2:key==='min_multiplier'?1:10} value={value} onChange={e=>setHybrid(h=>({...h,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}{Object.entries(fragility).map(([key,value])=><label key={key}>Assumed {key}<input type="number" min={key==='median_gust'?150:.02} max={key==='median_gust'?500:1} step={key==='median_gust'?5:.01} disabled={scenario==='imported'} value={value} onChange={e=>setFragility(f=>({...f,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}</div><p className="note">{hybridProfile?<>Uploaded pair: {hybridProfile.prediction?.model_version}. <button onClick={()=>setHybridProfile(null)}>Use built-in model</button></>:'Built-in saved XGBoost; no upload needed. It adjusts relative risk among comparable GB lines, preserving the engineering expected failure count.'} Geographic transfer beyond SSEN is unvalidated. Synthetic weather has missing rain, temperature and direction inputs; inference uses tree missing-value paths. These are stress-test assumptions.</p></details>
         <div className="risk-layer">
           <label htmlFor="risk">Corridor outage risk</label>
           <select id="risk" value={riskId} onChange={e => chooseRisk(e.target.value)}>

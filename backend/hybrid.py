@@ -71,22 +71,63 @@ def combine(engineering, full, reference, config=None):
     return result,multiplier
 
 
+def redistribute(engineering, full, reference, supported, config=None):
+    """Bounded relative ML tilt preserving sum of one-hour line probabilities.
+
+    Only supported lines participate; all others retain their physical hazard.
+    This preserves an assumed engineering rate, not a measured failure count.
+    """
+    config=settings(config)
+    p=np.asarray(engineering,float)
+    _,raw=combine(p,full,reference,config)
+    eligible=np.asarray(supported,bool) & (p>0) & (p<1)
+    multiplier=np.ones_like(p)
+    if np.count_nonzero(eligible)>1 and config['beta']>0:
+        hazard=-np.log1p(-p[eligible]); target=p[eligible].sum()
+        r=raw[eligible]
+        low=config['min_multiplier']/r.max()
+        high=config['max_multiplier']/r.min()
+        for _ in range(80):
+            scale=(low+high)/2
+            m=np.clip(r*scale,config['min_multiplier'],config['max_multiplier'])
+            if (-np.expm1(-hazard*m)).sum()<target: low=scale
+            else: high=scale
+        multiplier[eligible]=np.clip(r*((low+high)/2),config['min_multiplier'],config['max_multiplier'])
+    with np.errstate(divide='ignore'):
+        final=-np.expm1(np.log1p(-p)*multiplier)
+    return np.where(multiplier==1,p,final),multiplier
+
+
 def hybrid_weather(exposure, pair, config=None):
     ids=exposure['branch_ids']; dates=[r['timestamp'] for r in exposure['hours']]
     validate_pair(pair,ids,dates); config=settings(config)
     result=deepcopy(exposure)
     result.pop('prediction',None)
     result['engineering_model']={'name':'hybrid-hazard-v1','parameters':config}
+    relative=pair['prediction'].get('integration_method')=='relative-risk-budget-v1'
     result['hybrid_provenance']={'prediction':deepcopy(pair['prediction']),'source':pair['source'],
         'interpretation':'Experimental cross-target correction; not calibrated transmission reliability' if pair['prediction']['target']=='corridor_outage'
                          else 'Experimental correction under a declared transmission target; efficacy and beta require validation'}
+    if relative:
+        result['hybrid_provenance']['interpretation']='Engineering failure rate with bounded, weather-matched relative corridor ML risk; hourly expected line failures preserved; transmission transfer unvalidated'
     for row,ml in zip(result['hours'],pair['hours']):
         engineering=np.asarray(row['failure_probability'])
-        final,multiplier=combine(engineering,ml['full_probability'],ml['reference_probability'],config)
+        if relative:
+            counts=np.asarray(ml.get('reference_peer_count',[]))
+            domain=np.asarray(pair['prediction'].get('in_training_domain',[]),bool)
+            if counts.shape!=engineering.shape or domain.shape!=engineering.shape:
+                raise ValueError('Relative hybrid requires peer support and training-domain flags')
+            final,multiplier=redistribute(engineering,ml['full_probability'],ml['reference_probability'],counts>=5,config)
+        else:
+            final,multiplier=combine(engineering,ml['full_probability'],ml['reference_probability'],config)
         row['failure_probability']=final.tolist()
         row['hybrid_diagnostics']={'engineering_probability':engineering.tolist(),
             'ml_full_probability':ml['full_probability'],'ml_reference_probability':ml['reference_probability'],
             'hazard_multiplier':multiplier.tolist(),'unreinforced_probability':final.tolist()}
+        if relative:
+            row['hybrid_diagnostics'].update(reference_peer_count=ml['reference_peer_count'],
+                in_training_domain=pair['prediction']['in_training_domain'],
+                expected_engineering_failures=float(engineering.sum()),expected_hybrid_failures=float(final.sum()))
     result['source']='Experimental hybrid: '+exposure['source']+'; '+pair['source']
     return result
 

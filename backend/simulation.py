@@ -97,17 +97,34 @@ def simulate(net, scenario, hardened=(), playback=False):
     peak_shed=0.; repairs=0; outage_hours=0.; last_outage_end=0.
     probabilities=np.zeros(net.m)
     eligible=np.zeros(net.m,dtype=bool); weather_draws=np.zeros(net.m); sampled=np.zeros(net.m,dtype=bool)
+    ever_out=np.zeros(net.n,dtype=bool); ever_impaired=np.zeros(net.n,dtype=bool)
+    peak_out=0; peak_impaired=0
     def state(hour,kind,new_trips=(),gust=None):
-        nonlocal demand
+        nonlocal demand,peak_out,peak_impaired
         solution=net.solve(tuple(active),tuple(demand.round(9)))
         demand=solution['served'].copy()  # shed loads stay disconnected for this event
         ratios=np.abs(solution['flows'])/limits
+        # Nodes lose service through islanding/capacity shortfall; no invented
+        # independent substation-damage probability is sampled.
+        energized=np.zeros(net.n,dtype=bool)
+        for island in solution['islands']:
+            energized[island]=net.capacity[island].sum()>1e-6
+        has_load=net.load>1e-6
+        out=has_load & (demand<=1e-6)
+        reduced=has_load & ~out & (demand<net.load-1e-6)
+        impaired=out | reduced | (~has_load & ~energized)
+        node_status=np.where(has_load,np.where(out,'out_of_supply',np.where(reduced,'reduced_supply','supplied')),
+                             np.where(energized,'energized','deenergized'))
+        ever_out[:]|=out; ever_impaired[:]|=impaired
+        peak_out=max(peak_out,int(out.sum())); peak_impaired=max(peak_impaired,int(impaired.sum()))
         if playback:
             frames.append({'hour':hour,'kind':kind,'new_trips':[net.branches[i]['id'] for i in new_trips],
                 'served_mw':round(float(demand.sum()),3),'shed_mw':round(float(net.load.sum()-demand.sum()),3),
                 'served_by_bus':demand.round(4).tolist(),'generation_mw':solution['generation'].round(4).tolist(),
                 'flows_mw':solution['flows'].round(4).tolist(),'loading':ratios.round(4).tolist(),
                 'status':causes.copy(),'islands':[[i+1 for i in c] for c in solution['islands']],
+                'node_status':node_status.tolist(),'nodes_out_of_supply':int(out.sum()),
+                'nodes_reduced_supply':int(reduced.sum()),'nodes_deenergized':int((~energized & ~has_load).sum()),
                 'failure_probability':np.asarray(probabilities).round(6).tolist(),
                 'timestamp':scenario.get('timestamps',[None]*len(scenario['gust']))[int(hour)-1] if hour else None,
                 'gust_kmh':gust.round(1).tolist() if gust is not None else [0.]*net.m})
@@ -135,7 +152,9 @@ def simulate(net, scenario, hardened=(), playback=False):
             probabilities[hard]=failure_probability(gust[hard],scenario['rain'][t][hard],net.exposure[hard],dt,True)
         if 'failure_probability' in scenario:
             # Supplied predictions are baseline one-hour conditional probabilities.
-            probabilities=1.-(1.-scenario['failure_probability'][t])**np.where(hard,.25,1.)
+            supplied=scenario['failure_probability'][t]
+            with np.errstate(divide='ignore'):
+                probabilities=-np.expm1(np.log1p(-supplied)*np.where(hard,.25,1.))
         eligible=active.copy(); weather_draws=scenario['draws'][t]
         sampled=eligible & (weather_draws<probabilities)
         weather=np.flatnonzero(sampled)
@@ -163,7 +182,10 @@ def simulate(net, scenario, hardened=(), playback=False):
             'peak_shed_mw':peak_shed,'repairs':repairs,'outage_hours':outage_hours,
             'recovery_hour':(last_outage_end+dt if outage_hours else 0.) if float(net.load.sum()-demand.sum())<=1e-5 else None,
             'failed_lines':int(ever_failed.sum()),'cascade_trips':trips,'frames':frames,
-            'failed_mask':ever_failed.astype(int).tolist()}
+            'failed_mask':ever_failed.astype(int).tolist(),
+            'nodes_ever_out_of_supply':int(ever_out.sum()),'nodes_ever_impaired':int(ever_impaired.sum()),
+            'peak_nodes_out_of_supply':peak_out,'peak_nodes_impaired':peak_impaired,
+            'node_outage_mask':ever_out.astype(int).tolist()}
 
 _pool=None
 _parallel_unavailable=False
@@ -256,6 +278,10 @@ def summarize(results, total):
         'mean_shed_mw':round(float(np.mean([r['final_shed_mw'] for r in results])),3),
         'mean_failed_lines':round(float(np.mean([r['failed_lines'] for r in results])),3),
         'mean_cascade_trips':round(float(np.mean([r['cascade_trips'] for r in results])),3),
+        'mean_nodes_ever_out_of_supply':float(np.mean([r['nodes_ever_out_of_supply'] for r in results])),
+        'mean_peak_nodes_out_of_supply':float(np.mean([r['peak_nodes_out_of_supply'] for r in results])),
+        'mean_nodes_ever_impaired':float(np.mean([r['nodes_ever_impaired'] for r in results])),
+        'node_outage_probability':np.mean([r['node_outage_mask'] for r in results],axis=0).tolist(),
         'line_failure_probability':np.mean([r['failed_mask'] for r in results],axis=0).round(4).tolist(),
         'losses_mwh':energy.round(3).tolist()}
 

@@ -4,6 +4,7 @@ from .benchmark import STORMS, run_real_storm
 from .storm import run_storm
 from .simulation import run_experiment
 from .hybrid import hybrid_weather, settings, fragility_settings
+from .ml_risk import builtin_pair
 
 
 def map_frames(playback, context):
@@ -34,9 +35,10 @@ def run_storm_plan(net, scenario='synthetic', peak_gust=160, hours=36, seed=1,
     baseline=None
     config=settings(hybrid)
     if failure_mode=='hybrid':
+        pair=hybrid_profile if hybrid_profile is not None else builtin_pair(net,exposures,archive_storm=None if imported else scenario)
         baseline=run_experiment(net,seed=seed,samples=samples,budget=budget,mode='multiday',
             hours=len(exposures['hours']),crews=crews,weather=exposures,storm_type=storm_type,custom_lines=custom_lines,economics=economics)
-        exposures=hybrid_weather(exposures,hybrid_profile,config)
+        exposures=hybrid_weather(exposures,pair,config)
     plan=run_experiment(net,seed=seed,samples=samples,budget=budget,mode='multiday',
                         hours=len(exposures['hours']),crews=crews,weather=exposures,
                         storm_type=storm_type,custom_lines=custom_lines,economics=economics)
@@ -46,7 +48,7 @@ def run_storm_plan(net, scenario='synthetic', peak_gust=160, hours=36, seed=1,
                     failure_mode=failure_mode,hybrid_profile=hybrid_profile,hybrid=config,fragility=fragility)
     plan['model']['weather']=exposures['source']
     if 'engineering_model' in exposures:
-        plan['model']['failure_model']=('Experimental hybrid hazard: engineering × bounded paired-ML residual; not calibrated transmission reliability' if failure_mode=='hybrid' else 'Route/pylon engineering hourly probabilities; assumed hardening hazard multiplier 0.25')
+        plan['model']['failure_model']=(exposures['hybrid_provenance']['interpretation'] if failure_mode=='hybrid' else 'Route/pylon engineering hourly probabilities; assumed hardening hazard multiplier 0.25')
     plan['replay']['weather_source']='imported' if imported else 'synthetic' if scenario=='synthetic' else 'historical_replay'
     plan['replay']['request']=descriptor  # /api/storm-plan rebuilds exposures from source, not client arrays
     plan['replay']['endpoint']='/api/storm-plan'

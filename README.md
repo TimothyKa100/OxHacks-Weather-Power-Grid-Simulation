@@ -1,7 +1,7 @@
 # GridGuard
 
 A geographic grid stress-test and mitigation tool. It combines engineering fragility
-with an optional, bounded correction from paired ML predictions, then simulates line
+with bounded relative risk from the saved XGBoost model, then simulates line
 failures, DC cascades, repairs and investment decisions.
 
 [Model specification](docs/MODEL_SPEC.md) · [Measured integration results](docs/HYBRID_RESULTS.md) · [Target/feature contract](config/transmission_model_contract.json)
@@ -14,25 +14,39 @@ supply the declared features and target; it is not in this checkout. No empirica
 transmission-failure training result is claimed.
 
 The existing saved XGBoost model predicts distribution fault reports within 5 km of
-a line route. Those raw probabilities remain a separate purple map layer. An explicit
-**Experimental hybrid** mode can use full/reference prediction pairs as a bounded
-hazard correction. Cross-target use remains a scenario assumption, not calibrated
-transmission reliability. The old model has no fitted reference artifact; it cannot
-silently substitute a constant rate to create one.
+a line route. The UI defaults to **Engineering + relative ML risk**: a bounded risk
+redistribution among comparable lines, preserving the engineering expected number
+of line failures each hour. It runs without new data, retraining or an uploaded
+reference model. Cross-target use remains an assumption, not calibrated transmission
+reliability. Purple halos still show the raw area-risk scores as context.
 
 ## Calculation
 
 1. Engineering route exposure produces a whole-line hourly probability `p_eng`.
-2. A full ML model and a weather-aware reference predict the same declared target.
-3. Compute `s = logit(q_full) - logit(q_reference)` and
+2. Use complete saved Darragh scores when hours match; otherwise run the saved model
+   on available raw route features. Unknown weather stays missing, rather than zero.
+   Synthetic partial-feature inference is explicitly unvalidated.
+3. Compare each score with a leave-one-out median score from
+   at least 5 and up to 12 peers: gust within 10 km/h and engineering hazard within
+   a factor of 4. Outside that support, retain engineering risk. Transfer beyond
+   the SSEN training region is an explicit, unvalidated assumption.
+4. Compute `s = logit(q_full) - logit(q_reference)` and
    `m = clip(exp(beta*s), min_multiplier, max_multiplier)`.
-4. Set `p_hybrid = 1 - (1-p_eng)^m`. Beta zero reproduces engineering mode.
-5. Apply the assumed reinforcement hazard multiplier, then sample failures using
+5. Rescale supported multipliers within the bounds so that
+   `sum(1 - (1-p_eng)^m) = sum(p_eng)` each hour. Beta zero reproduces engineering mode.
+6. Apply the assumed reinforcement hazard multiplier, then sample failures using
    shared seeded random draws.
-6. Find islands, balance generation, solve DC power flows, trip overloaded branches
+7. Find islands, balance generation, solve DC power flows, trip overloaded branches
    simultaneously and repeat until stable. Repair crews and reconnection operate
    at hourly boundaries.
-7. Compare energy loss, tail risk, recovery and illustrative financial outcomes.
+8. Mark nodes as supplied, reduced supply or out of supply; zero-load nodes can
+   become deenergized. Compare energy loss, node outages, tail risk, recovery and costs.
+
+Conservation concerns each hour's hypothetical operating-line probabilities before
+reinforcement. Actual failures, cascades and recovery can differ because different
+lines break. Node outages follow the electrical solution, with no separate sampled
+physical substation-damage model. The reference is a peer statistic, not a newly
+fitted ML model. Matching reduces obvious double counting; it does not prove causality.
 
 Median pylon failure gust defaults to 265 km/h, dispersion to 0.12, beta to 0.5,
 and multiplier bounds to [0.5,2]. These are editable assumptions. Weather remains
@@ -55,16 +69,17 @@ Open http://127.0.0.1:5001 and keep the terminal running. This serves UI and API
 on one port. For a hosted development preview, add `--host 0.0.0.0 --port 5173`.
 For separate hot reload, run Flask on 5001 and `npm run dev --prefix frontend`.
 
-To try the hybrid integration without claiming fitted ML: choose Synthetic storm,
-seed **7**, **12 hours**, **190 km/h**, import
-`data/examples/synthetic_hybrid_pair.json`, and run the comparison. The file is
-explicitly synthetic. Select a branch and open the asset inspector to see the
+To try it, press **Simulate & compare**. Defaults are an explicitly synthetic stress
+test: seed **7**, **12 hours**, **190 km/h**; the fragility curve remains unchanged.
+Select a branch and open the asset inspector to see the
 engineering/full/reference probabilities, multiplier, applied probability and draw.
 Apply a suggested/custom plan to rerun that completed event unchanged.
 
-A real pair must cover every GB branch in exact API order and exactly match the
-storm's hourly timestamps. Missing reference scores or mismatched provenance are
-rejected. Raw corridor-risk files cannot be used as physical failure probabilities.
+Optional uploaded pairs still use the earlier unnormalised residual experiment;
+they must cover every GB branch and match its hours/provenance. Clear the pair with
+**Use built-in model** to return to the conservative default. The old
+`data/examples/synthetic_hybrid_pair.json` remains a synthetic integration fixture.
+Raw corridor probabilities are never sampled as physical failure probabilities.
 
 ## Train with the pending feature/label table
 

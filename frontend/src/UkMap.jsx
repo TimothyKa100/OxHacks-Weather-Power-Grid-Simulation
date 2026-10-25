@@ -8,7 +8,9 @@ const DOWN = {weather: '#e5484d', pylon: '#e5484d', overload: '#f2994a'};
 const BUS = {powered: '#c9d6e2', dark: '#e5484d'};
 const OUTAGE = '#ffd27a';
 const lineColor = (status, kv) => (status === 'online' ? LINE[kv] || LINE[275] : DOWN[status] || DOWN.pylon);
-const isDark = (frame, i, load) => load > 0 && frame.served_by_bus[i] < load - 0.5;
+const isDark = (frame, i, load) => frame.node_status
+  ? ['out_of_supply','reduced_supply','deenergized'].includes(frame.node_status[i])
+  : load > 0 && frame.served_by_bus[i] < load - 0.5;
 const STATUS_TEXT = {weather: 'weather failure', online: 'in service', pylon: 'pylon down', overload: 'tripped on overload'};
 const quantize = (x, step) => Math.round(x / step) * step;
 const MAX_ZOOM = 12;
@@ -273,10 +275,11 @@ const Buses = memo(function Buses({network, positions, state, s=1}) {
         const darkBefore = state ? isDark(state.previous, i, b.load_mw) : false;
         const fill = mix(darkBefore ? BUS.dark : BUS.powered, darkNow ? BUS.dark : BUS.powered, state ? state.fade : 1);
         return (
-          <circle key={b.id} cx={positions[i][0]} cy={positions[i][1]} r={Math.max(1.2, Math.min(3.2, Math.sqrt(b.load_mw) / 9)) * s} fill={fill} className="bus" style={{strokeWidth: 0.6 * s}}>
+          <circle key={b.id} data-node-status={state?.frame.node_status?.[i]||'supplied'} cx={positions[i][0]} cy={positions[i][1]} r={Math.max(1.2, Math.min(3.2, Math.sqrt(b.load_mw) / 9)) * s} fill={fill} className="bus" style={{strokeWidth: 0.6 * s}}>
             <title>
               Substation {b.id}
-              {b.kv ? ` · ${b.kv} kV` : ''}: {darkNow ? 'losing supply' : 'supplied'}
+              {b.kv ? ` · ${b.kv} kV` : ''}: {state?.frame.node_status?.[i]?.replaceAll('_',' ')||(darkNow ? 'losing supply' : 'supplied')}
+              {` · ${served.toFixed(1)} / ${b.load_mw.toFixed(1)} MW served`}
             </title>
           </circle>
         );

@@ -1,6 +1,53 @@
 # Hybrid integration and sensitivity results
 
-All results below use **synthetic paired scores**, not a newly trained transmission model. The network and route-weather engine are the actual GB prototype. No unpublished training dataset was accessed.
+## Current no-new-data prototype
+
+The default hybrid now uses the **actual saved corridor XGBoost**, without retraining
+or a reference-model upload. It redistributes engineering risk using same-hour
+weather/engineering peers, preserves expected hourly line failures and reports
+geographic/target transfer and missing inputs. This supersedes the optional
+synthetic-pair experiment below as the default UI behavior.
+
+Reproduce with `python scripts/benchmark_builtin_hybrid.py`. Machine-readable
+results: [builtin_hybrid.json](results/builtin_hybrid.json).
+
+Fixed **synthetic** 190 km/h stress test, 12 h, seed 7, 16 held-out failure/repair
+draws, six crews, budget three, median pylon gust 265 km/h and beta .5:
+
+| No-action metric | Engineering | Built-in hybrid |
+|---|---:|---:|
+| Mean unserved energy, MWh | 27,601.317 | 25,212.950 |
+| Mean distinct failed branches | 47.375 | 46.625 |
+| Mean overload trip events | 15.438 | 14.688 |
+| Mean nodes ever losing all supply | 1.4375 | 1.1250 |
+| Mean nodes ever impaired | 21.4375 | 22.1875 |
+
+The chosen median-loss hybrid playback has up to **41 weather-damaged lines,
+13 overload-tripped lines, one node without supply and twelve with reduced supply**.
+Counts are maxima of settled frames and need not occur in the same hour. Nodes
+lose service through connectivity/capacity; no physical substation-damage model
+has been invented. An explicit repair test confirms supply returns after repairs.
+
+There are 3,830 changed line-hours in this case. The largest absolute difference
+between engineering and hybrid expected one-hour failure counts is 3.56e-15.
+Actual distinct failures can change because line availability, repair and cascades
+depend on which assets break. The lower energy loss is **not improved predictive
+accuracy**: neither trajectory is an observed transmission outcome. The increase
+in nodes with any impairment also shows why a single outcome metric is insufficient.
+
+Hybrid's suggested portfolio is L175/L026, with mean loss 24,244.075 MWh under its
+own assumptions. Prioritized repairs alone worsen mean loss to 26,835.457 MWh in
+this case; the heuristic is not guaranteed to improve outcomes.
+
+Synthetic weather has raw route gusts and partial history; rain, temperature,
+crosswind and initial histories remain missing and follow tree missing-value paths.
+This inference is unvalidated. Darragh instead reuses the shipped complete-feature
+ERA5 predictions. Severe demo weather is labelled synthetic; the engineering curve
+was not weakened or probabilities floored to force a historical replay to fail.
+
+## Earlier optional synthetic-pair experiment
+
+The remaining results use **synthetic paired scores**, not a newly trained transmission model. The network and route-weather engine are the actual GB prototype. No unpublished training dataset was accessed.
 
 ## Reproducible experiment
 

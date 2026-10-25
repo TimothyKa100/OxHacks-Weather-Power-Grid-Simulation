@@ -150,15 +150,23 @@ def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak', me
     elif storm_type!='single_peak':
         raise ValueError('Unknown storm preset')
 
+    raw_gusts=[]
     def gust_at(t):
         distance = np.sum((samples['xy']-centre[t])**2, axis=1)
         field = peak_gust*strength[t]*(.3+.7*np.exp(-distance/(2*STORM_SIGMA**2)))  # sea-level gust
-        return field*weather_rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
+        raw=field*weather_rng.lognormal(0, GUSTINESS, field.shape)
+        raw_gusts.append(raw)
+        return raw*samples['c_alt']
 
     marker = lambda t: ([round(float(c), 4) for c in centre[t]], STORM_SIGMA)
     frames, hazards = simulate_gusts(net, hours, gust_at, rng, marker,median_gust,dispersion)
     from datetime import datetime,timedelta,timezone
     start=datetime(2026,1,1,tzinfo=timezone.utc)
     timestamps=[(start+timedelta(hours=t)).isoformat() for t in range(hours)]
+    exposure=planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility',median_gust,dispersion)
+    from .ml_risk import route_weather_features
+    exposure['ml_weather_source']='Synthetic unadjusted route gusts, equal sample weights; not ERA5 observations. Rain, temperature and direction unavailable.'
+    for row,features in zip(exposure['hours'],route_weather_features(net,raw_gusts)):
+        row['ml_weather']=features
     return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed,'storm_type':storm_type}, 'model': model_info(net,median_gust,dispersion), 'frames': frames,
-            'planning_weather':planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility',median_gust,dispersion)}
+            'planning_weather':exposure}

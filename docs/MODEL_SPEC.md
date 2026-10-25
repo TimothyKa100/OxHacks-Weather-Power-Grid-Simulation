@@ -27,7 +27,8 @@ What is actually present:
   estimated route pylons/terrain, assumed reactance, ratings, generation and demand.
 - Saved `gb-corridor-xgb-v1` weights/calibration and a Darragh prediction export.
   Its target is distribution fault reports inside a 5 km corridor, not transmission
-  asset failure. The raw export remains display-only.
+  asset failure. Its raw probability is a display layer; the built-in hybrid uses
+  only a bounded relative signal derived from it.
 - A larger ~4.12M-record catalogue is documented on `dataRefininf` but its databases,
   normalized tables and full training partitions are not in this checkout. Equipment
   records are not automatically electrical buses. This change does not load that
@@ -67,7 +68,56 @@ For historical replay, interval weather can be reanalysis. This is not a prospec
 forecast backtest. Genuine forecasts need archived issue/valid/availability times;
 metadata alone cannot verify that feature engineering excluded hindsight.
 
-## Paired learning
+## Default approach with no new data
+
+The UI defaults to **engineering rate + relative corridor ML risk**, implemented in
+`backend/ml_risk.py` and `backend/hybrid.py`. There is no fitted transmission target,
+so letting corridor probabilities set transmission failure frequency is unsupported.
+The engineering prior sets frequency; the existing model can redistribute relative
+risk under explicit, limited assumptions. This is the chosen conservative prototype,
+not an empirically established best predictor.
+
+1. For Darragh, use the shipped complete-feature prediction export at matching UTC
+   hours. Otherwise evaluate the checksum-verified saved XGBoost/calibration, using
+   its best early-stopping iteration, on the available route features. No network
+   request, new labels or retraining occurs.
+2. Synthetic gust max/p95 are calculated **before** altitude adjustment; p95 uses
+   equal route-sample weights. Previous-three-hour gust excludes the current hour
+   and stays missing for the first three hours. Crosswind, rain, temperature and
+   pre-window histories are not invented: unknown inputs take XGBoost's missing
+   paths. The fallback for other historical storms uses unadjusted UKV route gusts.
+   Both differ from complete ERA5 training; metadata reports partial-feature mode,
+   missing columns and weather convention. Their calibration is unvalidated.
+3. For each line/hour, find other GB lines at raw gust within 10 km/h and engineering hazard
+   within a factor of four. Sort by squared scaled gust/log-hazard distance; take
+   at most twelve. With fewer than five peers, use no correction. These matching
+   widths/support limits are assumptions, not fitted hyperparameters. Only 73 lines
+   were in the training region. Geographic transfer to the remaining lines is
+   unvalidated and flagged per line, even when their input features are available.
+4. The reference is `expit(median(logit(q_peer)))`. It is a leave-one-out statistic
+   of current predictions, **not** a learned reference, observed failure frequency
+   or new validation result. Matching wind and engineering risk limits obvious
+   double counting of gust, length and altitude, but cannot isolate causal effects.
+5. Compute the bounded residual multiplier below, then find a common scale by
+   bisection over supported lines. Clip each scaled multiplier to [.5,2] and require
+   `sum(p_hybrid) = sum(p_engineering)` each hour. Unsupported lines
+   keep multiplier one. Beta zero exactly preserves engineering probabilities.
+
+The equality applies to unconditional potential line exposures at that hour,
+**before** hardening and excluding no lines for previous outages. It is not equality
+of realised weather failures, distinct failed lines, cascades or customer losses:
+different failed lines change availability and subsequent recovery. A high raw
+corridor score never creates a probability floor. No normalization uses future
+outcomes or mitigation results. The multiplier bounds, peer counts, training-domain
+flags, expected counts, q/full/reference, applied p and random draws are exported.
+
+The API retains engineering mode for callers omitting `failure_mode`; the UI
+explicitly requests hybrid. An explicit uploaded pair selects the separate
+unnormalised paired experiment described next. Imported exposure needs engineering
+probabilities and raw `ml_weather` features to use the built-in adapter; passing
+terrain-adjusted gust as raw ML weather is not silently allowed.
+
+## Optional paired learning
 
 `python -m failure_model.paired train ROWS.parquet CONTRACT.json MODEL_DIRECTORY`
 fits a full XGBoost classifier and a portable weather-aware logistic reference for
@@ -110,8 +160,9 @@ Median gust defaults to 265 km/h and dispersion to 0.12. Both are editable scena
 parameters, not empirically established GB failure thresholds. Changing them keeps
 the seeded weather field fixed: weather RNG is independent of failure draws.
 
-Engineering mode uses that line probability. Hybrid mode requires an explicit pair
-with full score q_full and reference q_ref for every branch and every matching hour:
+Engineering mode uses that line probability. The default built-in hybrid creates
+full/reference scores as described above. An optional uploaded paired experiment
+uses a fitted full model/reference pair for every branch and matching hour:
 
 ```
 s = logit(q_full) - logit(q_ref)
@@ -122,8 +173,10 @@ p_hybrid = 1 - exp(-lambda_engineering * m * dt)
 
 Numerical logits are clipped at 1e-12. Computation uses stable log/exponential
 operations; engineering p=0 stays zero and p=1 stays one. Default beta=.5 and bounds
-[.5,2] are **assumptions**. API bounds: beta 0–2, min .05–1, max 1–10. Beta=0 or equal
-full/reference scores reproduces engineering probability. A high ML score does not
+[.5,2] are **assumptions**. API bounds: beta 0–2, min .05–1, max 1–10. Beta=0
+reproduces engineering probability. In the uploaded-pair experiment, equal
+full/reference scores also give no correction; the built-in mode additionally
+normalizes the supported multipliers to preserve expected frequency. A high ML score does not
 force damage or introduce a probability floor. Hybrid is not the sum or product of
 the two raw probabilities. A corridor-target pair remains an explicitly experimental
 cross-target correction; a transmission-target pair still needs beta validation.
@@ -151,6 +204,16 @@ Local gust ≥60 km/h pauses work. Weather repairs have seeded lognormal duratio
 (median 8 h, clipped 2–36); overload inspection/reset takes 2 crew-hours. Demand
 reconnection is attempted hourly. Travel, protection delays, AC voltage/frequency,
 actual switching and component-level repair logistics are not modelled.
+
+Every simulated frame reports `node_status`: load-bearing nodes are `supplied`,
+`reduced_supply` or `out_of_supply` according to served MW; zero-load nodes are
+`energized`/`deenergized` according to generation capacity in their island. This
+is a connectivity/capacity proxy, not AC energization or physical substation damage.
+The map and status counts use these states, including supply impairments below the
+old 0.5 MW display threshold. Ensemble results include ever-out/impaired node counts
+and per-node outage probabilities. These count supply states seen at any cascade
+round; energy loss still integrates only the settled hourly state. Repairs can
+restore supply at subsequent hourly boundaries.
 
 ## Decisions, comparisons and interpretation
 
@@ -186,6 +249,7 @@ python scripts/benchmark_hybrid.py --output docs/results/hybrid_sensitivity.json
 python scripts/serve_preview.py
 ```
 
+The UI runs the built-in hybrid immediately without the first two commands.
 The first two training/export commands require the pending feature/label tables;
 they cannot reconstruct them from the saved corridor model. Import paired.json,
 choose its matching storm and select Experimental hybrid in the UI. Matching branch
