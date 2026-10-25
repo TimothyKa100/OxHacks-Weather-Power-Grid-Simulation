@@ -4,12 +4,17 @@ import {flashesAt, gustsAt, layerTime, mix, stateAt, stormAt} from './timeline.j
 
 const LINE = {400: '#a9bccb', 275: '#8399aa', 132: '#617888'};
 const WIDTH = {400: 1.5, 275: 1.1, 132: 0.75};
-const DOWN = {weather: '#e5484d', pylon: '#e5484d', overload: '#f2994a'};
+const DOWN = {weather: '#e5484d', pylon: '#e5484d', overload: '#f2994a', transient: '#e8c547'};
 const BUS = {powered: '#c9d6e2', dark: '#e5484d'};
 const OUTAGE = '#ffd27a';
 const lineColor = (status, kv) => (status === 'online' ? LINE[kv] || LINE[275] : DOWN[status] || DOWN.pylon);
 const isDark = (frame, i, load) => load > 0 && frame.served_by_bus[i] < load - 0.5;
-const STATUS_TEXT = {weather: 'weather failure', online: 'in service', pylon: 'pylon down', overload: 'tripped on overload'};
+const STATUS_TEXT = {weather: 'tower damage (crew repair)', online: 'in service', pylon: 'pylon down', overload: 'tripped on overload (remote reclose)',
+                     transient: 'locked out after failed auto-reclose (remote reclose)'};
+const KIND_TEXT = {line: 'overhead line', cable: 'underground cable', transformer: 'transformer', link: 'inferred link'};
+// Cables and inferred links are drawn dashed/dotted when in service; transformers are thin site connectors.
+const KIND_DASH = {cable: [2.2, 1.6], link: [0.6, 1.8]};
+const KIND_WIDTH = {transformer: 0.6};
 const quantize = (x, step) => Math.round(x / step) * step;
 const MAX_ZOOM = 12;
 const DRAG_PX = 4;
@@ -228,6 +233,9 @@ const Lines = memo(function Lines({network, routes, state, geo, hardened, select
         const status = state?.frame.status[i] ?? 'online';
         const before = state?.previous.status[i] ?? status;
         const down = status !== 'online';
+        const inService = state?.frame.circuits_in_service?.[i];
+        const partial = !down && inService !== undefined && e.circuits && inService < e.circuits;
+        const dash = down ? [3, 2.5] : KIND_DASH[e.kind];
         const fallen = status === 'pylon' ? state.frame.fallen_at?.[i] : null;
         const at = fallen ? geo.px(fallen[0], fallen[1]) : null;
         return (
@@ -236,14 +244,17 @@ const Lines = memo(function Lines({network, routes, state, geo, hardened, select
               points={routes[i].points}
               fill="none"
               stroke={selected===e.id?'#fff':status==='online'&&hardened?.includes(e.id)?'#a8dc81':mix(lineColor(before, e.kv), lineColor(status, e.kv), state ? state.fade : 1)}
-              strokeWidth={((WIDTH[e.kv] || 1)+(hardened?.includes(e.id)?1:0)+(selected===e.id?1:0)) * s}
-              strokeDasharray={down ? `${3 * s} ${2.5 * s}` : undefined}
+              strokeWidth={((KIND_WIDTH[e.kind] ?? WIDTH[e.kv] ?? 1)+(hardened?.includes(e.id)?1:0)+(selected===e.id?1:0)) * s}
+              strokeOpacity={partial ? 0.55 : 1}
+              strokeDasharray={dash ? `${dash[0] * s} ${dash[1] * s}` : undefined}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
               <title>
-                {e.id} · {e.name || 'Transmission branch'}
-                {e.kv ? ` · ${e.kv} kV` : ''} · {STATUS_TEXT[status] || status}
+                {e.id} · {e.name || KIND_TEXT[e.kind] || 'Transmission branch'}
+                {e.kv ? ` · ${e.kind === 'transformer' && e.kv_low ? `${e.kv}/${e.kv_low}` : e.kv} kV` : ''}
+                {e.kind && e.kind !== 'line' && e.name ? ` · ${KIND_TEXT[e.kind]}` : ''} · {STATUS_TEXT[status] || status}
+                {partial ? ` · ${inService} of ${e.circuits} circuits in service` : ''}
               </title>
             </polyline>
             <polyline points={routes[i].points} fill="none" stroke="transparent" strokeWidth={9 * s} />

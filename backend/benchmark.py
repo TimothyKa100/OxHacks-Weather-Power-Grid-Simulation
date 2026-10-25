@@ -98,7 +98,7 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     sample_gust = np.nan_to_num(np.array([bilinear(gust_grid[t], lons, lats, s_lon, s_lat) for t in range(hours)]), nan=0.)
     gust_at = lambda t: sample_gust[t]*terrain*rng.lognormal(0, GUSTINESS, len(s_lon))
 
-    frames, hazard = simulate_gusts(net, hours, gust_at, rng)
+    frames, hazard, hardened = simulate_gusts(net, hours, gust_at, rng)
 
     # Coverage: route samples inside cells where the outage feed has ever reported anything.
     size = storm['coverage_cell']; covered_cells = {tuple(c) for c in storm['coverage']}
@@ -143,7 +143,7 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
     return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames,
             'planning_weather':planning_exposure(net,frames,hazard,storm['timestamps'],
-                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility"),
+                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",hardened),
             'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],

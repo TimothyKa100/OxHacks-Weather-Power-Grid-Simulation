@@ -17,12 +17,20 @@ PYLON_MEDIAN_GUST = 265.   # km/h (at the pylon, after altitude) at which half w
 PYLON_BETA = .12           # lognormal dispersion of pylon strength (illustrative)
 STORM_SIGMA = .11          # storm core radius in map units (~120 km on GB)
 GUSTINESS = .08            # hour-to-hour, place-to-place gust noise (lognormal sigma)
+from .grid_ops import _OVERRIDES
+PYLON_MEDIAN_GUST = float(_OVERRIDES.get('pylon_median_gust', PYLON_MEDIAN_GUST))  # sensitivity sweeps only
 
 
-def pylon_failure_probability(gust_kmh):
+def pylon_failure_probability(gust_kmh, median=None):
     """Probability one pylon collapses during an hour with this peak local gust."""
     gust = np.maximum(np.asarray(gust_kmh, float), 1e-6)
-    return ndtr(np.log(gust/PYLON_MEDIAN_GUST)/PYLON_BETA)
+    return ndtr(np.log(gust/(PYLON_MEDIAN_GUST if median is None else median))/PYLON_BETA)
+
+
+def hardened_median():
+    """Hardened towers: the fragility median is raised (grid_ops.PARAMS), not the hazard scaled."""
+    from .grid_ops import PARAMS
+    return PYLON_MEDIAN_GUST*PARAMS['hardening_median_factor']
 
 
 def altitude_factor(elevation_m, height_m):
@@ -34,7 +42,7 @@ def route_samples(net):
     """Flattened route samples: position, terrain height, owning line and pylon share."""
     if not hasattr(net, '_route_samples'):
         rows = [(i, x, y, ele, e['pylons']/len(e['samples']), e['tower_height_m'])
-                for i, e in enumerate(net.branches) for x, y, ele in e['samples']]
+                for i, e in enumerate(net.branches) for x, y, ele in e['samples']]  # transformers/links have none
         line, x, y, ele, pylons, height = map(np.array, zip(*rows))
         net._route_samples = {'line': line.astype(int), 'xy': np.column_stack([x, y]), 'ele': ele,
                               'pylons': pylons, 'c_alt': altitude_factor(ele, height)}
@@ -57,7 +65,8 @@ def storm_path(net, hours, rng):
 def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
     """Core engine. gust_at(t) -> gust (km/h, at the pylon) for every route sample in hour t.
 
-    Returns hourly frames plus the per-sample collapse hazard of every hour (for benchmarking).
+    Returns hourly frames plus the per-sample collapse hazard of every hour (for benchmarking),
+    and the same hazard for hardened towers (raised fragility median).
     """
     samples = route_samples(net)
     line_of = samples['line']
@@ -65,7 +74,7 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
     status = ['online']*net.m
     fallen_at = [None]*net.m
     demand = net.load.copy()
-    frames, hazards = [], []
+    frames, hazards, hardened = [], [], []
 
     def snapshot(hour, gust, line_probability, events, centre_xy, radius):
         nonlocal demand
@@ -94,6 +103,7 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
         # Hazard per sample = its pylons times -log(survival of one pylon); a line sums its samples.
         hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust), 1-1e-12))
         hazards.append(hazard)
+        hardened.append(-samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, hardened_median()), 1-1e-12)))
         line_probability = -np.expm1(-np.bincount(line_of, hazard, net.m))
         fell = np.flatnonzero(active & (rng.random(net.m) < line_probability))
         for i in fell:
@@ -114,7 +124,7 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
             frames.pop()  # keep one settled frame per hour
             loading = snapshot(t+1, line_gust, line_probability, events, storm_xy, radius)
         else: raise RuntimeError('Cascade failed to terminate')
-    return frames, np.array(hazards)
+    return frames, np.array(hazards), np.array(hardened)
 
 
 def model_info(net):
@@ -123,7 +133,7 @@ def model_info(net):
             'route_samples': int(len(route_samples(net)['line']))}
 
 
-def planning_exposure(net, frames, hazards, timestamps, source):
+def planning_exposure(net, frames, hazards, timestamps, source, hardened=None):
     """Full-precision route risk for the shared multi-day decision engine.
 
     Engineering probabilities are labelled separately from trained ML predictions.
@@ -133,7 +143,9 @@ def planning_exposure(net, frames, hazards, timestamps, source):
     return {'source':source, 'branch_ids':[e['id'] for e in net.branches],
             'engineering_model':{'name':'route-pylon-v1','parameters':model_info(net)},
             'hours':[{'timestamp':timestamps[t], 'gust_kmh':frames[t+1]['gust_kmh'], 'rain_mm_h':0,
-                      'failure_probability':(-np.expm1(-np.bincount(line_of,hazard,net.m))).tolist()}
+                      'failure_probability':(-np.expm1(-np.bincount(line_of,hazard,net.m))).tolist(),
+                      **({'failure_probability_hardened':(-np.expm1(-np.bincount(line_of,hardened[t],net.m))).tolist()}
+                         if hardened is not None else {})}
                      for t,hazard in enumerate(hazards)]}
 
 
@@ -155,9 +167,9 @@ def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak'):
         return field*rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
 
     marker = lambda t: ([round(float(c), 4) for c in centre[t]], STORM_SIGMA)
-    frames, hazards = simulate_gusts(net, hours, gust_at, rng, marker)
+    frames, hazards, hardened = simulate_gusts(net, hours, gust_at, rng, marker)
     from datetime import datetime,timedelta,timezone
     start=datetime(2026,1,1,tzinfo=timezone.utc)
     timestamps=[(start+timedelta(hours=t)).isoformat() for t in range(hours)]
     return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed,'storm_type':storm_type}, 'model': model_info(net), 'frames': frames,
-            'planning_weather':planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility')}
+            'planning_weather':planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility',hardened)}

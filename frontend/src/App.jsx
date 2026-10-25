@@ -154,7 +154,8 @@ export default function App() {
     const frame = timeline.frames[frameIndexAt(timeline, t)];
     const pylons = frame.status.filter(s => s === 'pylon'||s==='weather').length;
     const tripped = frame.status.filter(s => s === 'overload').length;
-    const parts = [plural(pylons, 'weather failure'), plural(tripped, 'line') + ' tripped'];
+    const locked = frame.status.filter(s => s === 'transient').length;
+    const parts = [plural(pylons, 'damaged route'), plural(tripped, 'overload trip'), ...(locked ? [plural(locked, 'fault lockout')] : [])];
     let when = `Hour ${Math.min(timeline.lastHour, Math.max(0, Math.ceil(t)))} of ${timeline.lastHour}`;
     if (run.storm) {
       const hour = Math.min(run.storm.timestamps.length - 1, Math.max(0, Math.floor(t)));

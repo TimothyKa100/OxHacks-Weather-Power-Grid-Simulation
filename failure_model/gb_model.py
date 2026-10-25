@@ -273,7 +273,9 @@ def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=No
             frame[col] = float(line[col])
         if frame[WEATHER_FEATURES].isna().any().any():
             raise ValueError(f"{line['id']}: incomplete route weather for the replay window")
-        columns[line["id"]] = (frame, calibrated(model, calibration, frame[manifest["features"]].astype(np.float32)))
+        risk = calibrated(model, calibration, frame[manifest["features"]].astype(np.float32))
+        # Only overhead routes have a corridor exposure; cables, transformers and inferred links get none.
+        columns[line["id"]] = (frame, risk if line["kind"] == "line" else np.zeros(len(risk)))
     profile = {
         "source": (f"GridGuard {MODEL_VERSION}: calibrated XGBoost hourly outage risk in each line's 5 km corridor, "
                    "trained on SSEN NaFIRS weather-caused overhead-line faults with ERA5 (Open-Meteo) route weather. "

@@ -4,13 +4,13 @@ A GB storm map with multi-day failure, repair and mitigation decisions: weather 
 
 The interface combines the geographic map from `feature/gb-storm-map` with the simulation and decision support from `feature/multiday-weather-recovery`.
 
-- **Map:** 303 substations and 367 transmission branches at 132–400 kV, using OSM routes and terrain via uk-grid-atlas. Electrical parameters, generation dispatch and demand allocation remain illustrative.
+- **Map:** 478 substation buses (one per voltage level at a site) and 673 branches at 132–400 kV: 436 overhead routes from uk-grid-atlas (OSM), 51 underground 275/400 kV cables from the grid archive, 137 transformers and 49 inferred links. Every single-circuit outage but one leaves supply intact. Electrical parameters, dispatch and demand allocation remain illustrative.
 - **Weather:** synthetic geographic windstorms (single peak, persistent winds or two peaks), the tracked Storm Darragh historical replay, other locally built storms, or imported hourly GB weather / model probabilities.
-- **One decision engine:** the map uses `POST /api/storm-plan`. Route length, sampled terrain and pylon fragility supply illustrative hourly line probabilities; the multi-day simulator handles failure draws, DC overload cascades, limited crews, repairs and reconnection. No precise pylon-collapse location is inferred by this planner.
+- **One decision engine:** the map uses `POST /api/storm-plan`. Route length, sampled terrain and pylon fragility supply illustrative hourly tower-damage probabilities. The GB storm engine separates tower damage (crews, days), transient faults (auto-reclose or remote reclose) and overload trips. It re-dispatches before and after faults, trips lines above a short-term rating, follows winter demand and wind cut-out, and collapses islands without synchronous generation. See [the cascade model](docs/CASCADE_MODEL.md). No precise pylon-collapse location is inferred by this planner.
 - **Two audiences:** public outage preparedness and organisation/government mitigation. Choose suggested or custom line reinforcements, compare repair priorities, and apply a plan to the same completed storm and seed.
 - **Evidence and costs:** paired held-out loss differences, peak/final major outages, worst-decile loss, recovery, editable asset investment costs, benefit/cost ratios and break-even events. Costs and interruption values are assumptions.
 
-Run a comparison, select a portfolio in the decision table to show it on the map, and pause/scrub playback. Green routes are reinforced; red routes have a weather failure; orange routes tripped on overload. Observed outage dots and the historical wind-risk chart remain fixed when hypothetical interventions change the simulation. Export includes full cascade frames and decision assumptions.
+Run a comparison, select a portfolio in the decision table to show it on the map, and pause/scrub playback. Green routes are reinforced; red routes have tower damage; orange routes tripped on overload; yellow circuits are locked out after a failed auto-reclose; faded routes have a circuit out. Cables are dashed and inferred links dotted. Observed outage dots and the historical wind-risk chart remain fixed when hypothetical interventions change the simulation. Export includes full cascade frames and decision assumptions.
 
 **Historical observations:** Darragh is the tracked example. Other storm files are local products of `scripts/build_storm_benchmark.py`; `GET /api/storms` lists those actually present. Historical gusts come from Met Office UKV via Open-Meteo. Outage observations come from distribution feeds, so timing/place correlations are contextual checks, not validation of transmission failures, predicted counts or mitigation effectiveness. Coverage shading identifies where observations exist.
 
@@ -21,10 +21,11 @@ The old `POST /api/storm` single-storm pylon animation remains for compatibility
 `data/gb_network.json` is generated, not hand-written. To rebuild it from a checkout of the atlas:
 
 ```bash
-python scripts/build_gb_network.py ../uk-grid-atlas
+python scripts/build_gb_network.py data/grid/raw/uk_grid_atlas data/grid/uk_power_grid.sqlite
+python scripts/security_analysis.py
 ```
 
-The script clusters OSM line endpoints within 2 km into substations, merges parallel ways into multi-circuit branches, contracts series chains and keeps the largest connected component (about 88% of the atlas's route length). Stations with a stated capacity are attached to the nearest substation. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative. Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB experiment takes about 30 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
+The builder clusters endpoints of the same voltage within 2 km into substation buses and splits routes at T-joins the clustering missed. Separate routes stay separate branches; overhead routes are assumed double-circuit. It adds the archive's 275/400 kV underground cables, transformers between co-located voltage levels, links from dead ends to a substation of the same voltage within 10 km, interconnector imports and boundary supplies where coverage ends. It keeps the largest connected component (96% of overhead route length) and sizes transformer and cable counts the data lacks to secured operating points. `security_analysis.py` reports the single-circuit (N-1) result. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative; see [the cascade model](docs/CASCADE_MODEL.md). Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB storm plan with 16 held-out scenarios takes about 100 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Multi-day damage and recovery
 

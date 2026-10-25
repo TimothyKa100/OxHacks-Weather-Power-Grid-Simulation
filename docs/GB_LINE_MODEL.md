@@ -204,6 +204,8 @@ closed) to show why it must stay a separate layer.
 
 ### Storm Darragh replay (6 Dec 2024 12:00Z, 60 h, inside the test period)
 
+> These numbers were measured on the earlier 367-branch network and engine. The `cascade-realism` network has 673 branches (see CASCADE_MODEL.md). The export was regenerated for it, with zero corridor risk on cables, transformers and links. Corridor risk is shown only as a map layer.
+
 `data/failure_model/exports/darragh-2024_gb-corridor-xgb-v1.json` was exported with branch
 order read from the running app. ERA5 for all 136 route cells was fetched on demand; the 53
 cells also in the archive matched it exactly. The profile was accepted by `POST /api/storm-plan`

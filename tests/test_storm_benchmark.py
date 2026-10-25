@@ -99,7 +99,7 @@ def test_storm_list_matches_files_on_disk():
     assert 'darragh-2024' in {s['id'] for s in body['storms']}
     assert sorted(s['id'] for s in body['storms']) == sorted(s['id'] for s in built)
     assert [s['start'] for s in body['storms']] == sorted(s['start'] for s in body['storms'])
-    assert len(body['network']['buses']) == 303
+    assert len(body['network']['buses']) == len(json.loads((ROOT/'data/gb_network.json').read_text())['buses'])
     for entry in body['storms']:
         storm = next(s for s in built if s['id'] == entry['id'])
         assert entry['outages'] == len(storm['outages']) and entry['operators'] == storm['operators']

@@ -10,12 +10,15 @@ def gb(): return Network('gb')
 
 
 def test_gb_backbone_is_connected_and_balanced(gb):
-    assert gb.geographic and gb.n > 250 and gb.m > 300
+    assert gb.geographic and gb.n > 400 and gb.m > 600
     assert {e['kv'] for e in gb.branches} == {132, 275, 400}
+    assert {e['kind'] for e in gb.branches} == {'line', 'cable', 'transformer', 'link'}
     intact = gb.solve(tuple([True]*gb.m), tuple(gb.load))
     assert len(intact['islands']) == 1
     assert intact['served'].sum() == pytest.approx(gb.load.sum())
-    assert np.max(np.abs(intact['flows'])/gb.ratings) <= 1/1.6 + 1e-9
+    # Ratings are voltage class x circuits (no uplift to the dispatch); the intact grid fits them.
+    assert np.allclose(gb.ratings, [e['rating_mw'] for e in gb.branches])
+    assert np.max(np.abs(intact['flows'])/gb.ratings) < 1
     assert all(49.5 < b['lat'] < 61 and -8.5 < b['lon'] < 2 for b in gb.buses)
 
 
@@ -47,8 +50,11 @@ def test_pylon_count_drives_line_risk(gb):
     from backend.storm import pylon_failure_probability, PYLON_MEDIAN_GUST
     p = pylon_failure_probability(np.array([100, 150, 200, PYLON_MEDIAN_GUST]))
     assert np.all(np.diff(p) > 0) and p[-1] == pytest.approx(.5)
-    lengths = np.array([e['length_km'] for e in gb.branches]); pylons = np.array([e['pylons'] for e in gb.branches])
+    lines = [e for e in gb.branches if e['kind'] == 'line']
+    lengths = np.array([e['length_km'] for e in lines]); pylons = np.array([e['pylons'] for e in lines])
     assert np.all(pylons >= 1) and np.corrcoef(lengths, pylons)[0, 1] > .99
+    # Cables, transformers and inferred links have no towers, so no wind collapse risk.
+    assert all(e['pylons'] == 0 and not e['samples'] and e['exposure'] == 0 for e in gb.branches if e['kind'] != 'line')
 
 
 def test_storm_run_is_reproducible_and_physical(gb):
@@ -80,7 +86,7 @@ def test_storm_api():
 
 def test_every_node_and_route_sample_has_elevation(gb):
     assert all(0 <= b['ele_m'] < 1400 for b in gb.buses)
-    assert all(e['samples'] and all(0 <= s[2] < 1400 for s in e['samples']) for e in gb.branches)
+    assert all(e['samples'] and all(0 <= s[2] < 1400 for s in e['samples']) for e in gb.branches if e['kind'] == 'line')
     # Scotland's 132-275 kV routes cross real uplands.
     assert max(e['ele_max_m'] for e in gb.branches) > 400
     assert 'samples' not in gb.payload()['branches'][0]

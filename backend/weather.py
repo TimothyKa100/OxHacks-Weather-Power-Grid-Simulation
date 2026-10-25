@@ -106,6 +106,12 @@ def validate_weather(profile, branches):
             except (ValueError, TypeError): raise ValueError('Invalid failure_probability')
             if probabilities.shape != (branches,) or not np.all(np.isfinite(probabilities)) or np.any(probabilities < 0) or np.any(probabilities > 1):
                 raise ValueError(f'failure_probability requires {branches} values between 0 and 1')
+        if 'failure_probability_hardened' in row:
+            # Only the engineering model can say how hardened towers fare (raised fragility median).
+            if engineering is None: raise ValueError('failure_probability_hardened requires the engineering model')
+            hardened = np.asarray(row['failure_probability_hardened'], dtype=float)
+            if hardened.shape != (branches,) or not np.all(np.isfinite(hardened)) or np.any(hardened < 0) or np.any(hardened > 1):
+                raise ValueError(f'failure_probability_hardened requires {branches} values between 0 and 1')
     return profile
 
 
@@ -145,9 +151,24 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
     repair = np.clip(rng.lognormal(np.log(8), .4, (count, hours, network.m)), 2, 36)
     result = [dict(gust=gust, rain=rain, draws=draws[i], repair_hours=repair[i],
                    timestamps=timestamps, dt_hours=1., crews=crews, recovery=True) for i in range(count)]
+    if network.geographic:
+        # GB engine (grid_ops): days-long damage repairs, per-circuit transient faults and
+        # auto-reclose outcomes, and a shared per-corridor, per-hour damage factor.
+        from .grid_ops import PARAMS, damage_repair_hours
+        model = network.grid_model
+        width = int(model.circuits.max())
+        sigma = PARAMS['common_cause_sigma']
+        for scenario in result:
+            scenario['repair_hours'] = damage_repair_hours(rng, (hours, network.m))
+            scenario['transient_draws'] = rng.random((hours, network.m, width))
+            scenario['reclose_draws'] = rng.random((hours, network.m, width))
+            scenario['common_cause'] = rng.lognormal(-sigma**2/2, sigma, (hours, model.groups)) if sigma > 0 else np.ones((hours, model.groups))
     if weather is not None and 'failure_probability' in rows[0]:
         probabilities = np.array([row['failure_probability'] for row in rows])
         for scenario in result: scenario['failure_probability'] = probabilities
+        if 'failure_probability_hardened' in rows[0]:
+            hardened = np.array([row['failure_probability_hardened'] for row in rows])
+            for scenario in result: scenario['failure_probability_hardened'] = hardened
     return result
 
 

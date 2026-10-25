@@ -40,13 +40,17 @@ class Network:
         self.solve = lru_cache(maxsize=16000 if self.m<PARALLEL_MIN_BRANCHES else 400)(self._solve)
         base = self.solve(tuple([True]*self.m),tuple(self.load))
         if self.geographic:
-            # Voltage-class circuit ratings, raised where the illustrative dispatch would already overload.
-            self.ratings = np.maximum([e['rating_mw'] for e in self.branches], np.abs(base['flows'])*1.6)
+            # Voltage-class ratings x circuits. No uplift to the illustrative dispatch: the GB engine
+            # re-dispatches each hour, so overloads in the intact case are relieved by operators.
+            self.ratings = np.array([e['rating_mw'] for e in self.branches], float)
         else:
             # case14 has no useful thermal ratings. Explicit demo assumptions, not IEEE limits.
             self.ratings = np.maximum(22.,np.abs(base['flows'])*1.55+8.)
         self.midpoints = np.array([[(self.buses[e['from']-1]['x']+self.buses[e['to']-1]['x'])/2,
                                     (self.buses[e['from']-1]['y']+self.buses[e['to']-1]['y'])/2] for e in self.branches])
+        if self.geographic:
+            from .grid_ops import GridModel
+            self.grid_model = GridModel(self)
 
     def _solve(self, active_tuple, demand_tuple):
         active = np.array(active_tuple,dtype=bool)
@@ -86,6 +90,10 @@ class Network:
         return {**self.data,'name':self.name,'total_load_mw':float(self.load.sum()),'branches':[{**{k:v for k,v in e.items() if k!='samples'},'rating_mw':round(float(self.ratings[i]),2)} for i,e in enumerate(self.branches)]}
 
 def simulate(net, scenario, hardened=(), playback=False):
+    if net.geographic and 'transient_draws' in scenario:
+        # GB map: circuits, failure types, protection, re-dispatch and island viability (grid_ops).
+        from .grid_ops import simulate_gb
+        return simulate_gb(net, scenario, hardened, playback)
     hard=np.zeros(net.m,dtype=bool); hard[list(hardened)]=True
     active=np.ones(net.m,dtype=bool); causes=['online']*net.m
     demand=net.load.copy(); frames=[]; energy=0.; trips=0
@@ -346,4 +354,13 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
                  'failure_model':('Imported model one-hour conditional probabilities; assumed hardening hazard multiplier 0.25' if 'failure_probability' in heldout[0]
                                   else 'Hourly hazard, hardening rate multiplier 0.25' if mode=='multiday' else 'Hourly probability, hardening probability multiplier 0.25'),
                  'reinforcement':'75% lower weather failure hazard in multi-day mode (probability in original mode); 30% higher illustrative rating',
-                 'objective':'Greedy training mean unserved MWh reduction / budget unit; no optimality guarantee'}}
+                 'objective':'Greedy training mean unserved MWh reduction / budget unit; no optimality guarantee',
+                 # GB engine descriptions replace the generic ones above.
+                 **({'power_flow':'Lossless DC per circuit; preventive (85% pre-fault margin) and corrective re-dispatch; lines above 1.2x short-term rating trip at once, otherwise the most overloaded trips first',
+                     'operation':'Winter weekday demand curve; wind power curve with storm cut-out; interconnector imports; islands need synchronous capacity for 30% of demand',
+                     'recovery':'Tower damage: crews, safe weather, lognormal repair (median 4 days); transient faults: auto-reclose (85%) or lockout reclosed remotely next hour; overload trips reclosed remotely next hour',
+                     'failure_model':('Imported one-hour damage probabilities; hardened lines fall back to the assumed hazard multiplier 0.25'
+                                      if 'failure_probability' in heldout[0] and 'failure_probability_hardened' not in heldout[0]
+                                      else 'Route/pylon fragility damage with a per-corridor common-cause factor; per-circuit transient faults by gust'),
+                     'reinforcement':'Hardened towers: fragility median x1.25 (or hazard x0.25 for imported probabilities) and half the transient fault rate; no rating change'}
+                    if net.geographic and 'transient_draws' in heldout[0] else {})}}

@@ -53,7 +53,7 @@ def load_network(path=ROOT / "data/gb_network.json"):
     lines = []
     for e in network["branches"]:
         lines.append({**{k: e[k] for k in ["id", "kv", "length_km", "ele_mean_m", "ele_max_m", "circuits",
-                                           "pylons", "span_m", "tower_height_m"]},
+                                           "pylons", "span_m", "tower_height_m"]}, "kind": e.get("kind", "line"),
                       "route": [to_lonlat(p) for p in e["geometry"]]})
     return lines
 
