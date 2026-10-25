@@ -1,0 +1,9 @@
+# Python 3.10+; runtime atlas/simulator dependencies remain separate.
+numpy>=2.2,<3
+pandas>=2.2,<3
+pyarrow>=19,<26
+pyproj>=3.6,<4
+requests>=2.31,<3
+xgboost-cpu==3.2.0
+scikit-learn==1.7.2
+matplotlib==3.10.9

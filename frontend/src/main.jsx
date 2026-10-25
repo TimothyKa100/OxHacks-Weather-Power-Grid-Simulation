@@ -3,6 +3,7 @@
 import React, {useEffect, useId, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+import GridMap from './GridExplorer.jsx';
 
 const names={none:'No action',risk:'Weather risk baseline',topology:'Power-flow baseline',optimized:'GridGuard selection'};
 const number=(x,d=1)=>Number(x||0).toLocaleString('en-GB',{maximumFractionDigits:d,minimumFractionDigits:d});
@@ -116,4 +117,4 @@ function App(){
 }
 function Metric({title,value,unit,detail,positive=false,icon}){return <article className="metric"><div><span>{title}</span><Icon name={icon} size={15}/></div><strong className={positive?'positive':''}>{value}<small>{unit}</small></strong><p>{positive&&<span className="gain-arrow">↗ </span>}{detail}</p></article>}
 
-createRoot(document.getElementById('root')).render(<App/>);
+createRoot(document.getElementById('root')).render(window.location.hash==='#demo'?<App/>:<GridMap/>);

@@ -1,0 +1,9 @@
+-r requirements-map.txt
+pandas>=2.2,<3
+pyarrow>=19,<26
+pyproj>=3.6,<4
+requests>=2.31,<3
+scikit-learn>=1.6,<2
+osmium>=4,<5
+pyogrio>=0.11,<1
+pypdf>=6,<7

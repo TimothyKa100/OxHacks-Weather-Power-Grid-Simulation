@@ -1,1 +1,37 @@
-/data
+
+# Downloaded and generated datasets
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+
+# Node and frontend builds
+node_modules/
+.vite/
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -8,6 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 import numpy as np
 from .weather import fragility, scenarios, load_profile
+from .probability import validate_profile, imported_scenarios, reduce_hazard
 
 class Network:
     def __init__(self):
@@ -95,7 +96,11 @@ def simulate(net, scenario, hardened=(), playback=False):
     state(0,'Intact network')
     for t in range(len(scenario['gust'])):
         gust=scenario['gust'][t]
-        probabilities=fragility(gust,scenario['rain'][t],net.exposure)*np.where(hard,.25,1.)
+        if 'failure_probability' in scenario:
+            baseline=scenario['failure_probability'][t]
+            probabilities=np.where(hard,reduce_hazard(baseline),baseline)
+        else:
+            probabilities=fragility(gust,scenario['rain'][t],net.exposure)*np.where(hard,.25,1.)
         weather=np.flatnonzero(active & (scenario['draws'][t]<probabilities))
         for i in weather: active[i]=False; causes[i]='weather'
         loading=state(t+1,'Storm exposure',weather,gust)
@@ -110,7 +115,8 @@ def simulate(net, scenario, hardened=(), playback=False):
         energy+=float(net.load.sum()-demand.sum()) # settled loss x one-hour window
     return {'unserved_mwh':energy,'final_shed_mw':float(net.load.sum()-demand.sum()),
             'failed_lines':int((~active).sum()),'cascade_trips':trips,'frames':frames,
-            'failed_mask':(~active).astype(int).tolist()}
+            'failed_mask':(~active).astype(int).tolist(),
+            'direct_weather_failed_mask':[int(c=='weather') for c in causes]}
 
 def evaluate(net, bank, selected):
     return [simulate(net,s,selected) for s in bank]
@@ -148,15 +154,17 @@ def summarize(results):
         'mean_failed_lines':round(float(np.mean([r['failed_lines'] for r in results])),3),
         'mean_cascade_trips':round(float(np.mean([r['cascade_trips'] for r in results])),3),
         'line_failure_probability':np.mean([r['failed_mask'] for r in results],axis=0).round(4).tolist(),
+        'direct_weather_failure_frequency':np.mean([r['direct_weather_failed_mask'] for r in results],axis=0).round(4).tolist(),
         'losses_mwh':energy.round(3).tolist()}
 
-def run_experiment(net, intensity=100, seed=26, samples=128, budget=5):
+def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, weather_profile=None):
     import time
     started=time.perf_counter()
-    training=scenarios(net,intensity,seed ^ 0xA51C,24)
-    heldout=scenarios(net,intensity,seed,samples)
+    profile=validate_profile(weather_profile,net) if weather_profile is not None else None
+    training=imported_scenarios(profile,seed ^ 0xA51C,24) if profile else scenarios(net,intensity,seed ^ 0xA51C,24)
+    heldout=imported_scenarios(profile,seed,samples) if profile else scenarios(net,intensity,seed,samples)
     selected,trace=select_reinforcement(net,training,budget)
-    risk=np.mean([fragility(s['gust'],s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
+    risk=(1-np.prod(1-training[0]['failure_probability'],axis=0)) if profile else np.mean([fragility(s['gust'],s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
     # Electrical topology baseline: initial absolute flow / cost (cost applied by ranking).
     intact=net.solve(tuple([True]*net.m),tuple(net.load))
     portfolios={'none':[], 'risk':ranked_portfolio(net,risk,budget),
@@ -174,9 +182,12 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5):
             'paired_gain_standard_error_mwh':round(float(paired.std(ddof=1)/np.sqrt(samples)),3),
             'playback':simulate(net,heldout[demo],lines,True)}
     return {'config':{'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24},
-        'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':load_profile(),
+        'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':profile or load_profile(),
         'demo_scenario_index':demo,'demo_selection':'Median unmitigated held-out loss; same scenario for every portfolio',
         'elapsed_seconds':round(time.perf_counter()-started,2),
-        'model':{'power_flow':'Lossless DC, island-balanced active dispatch','weather':'Synthetic / illustrative fragility',
-                 'reinforcement':'75% lower weather-trip probability and 30% higher illustrative thermal rating',
+        'model':{'power_flow':'Lossless DC, island-balanced active dispatch','weather':'User-supplied hourly branch probabilities' if profile else 'Synthetic / illustrative fragility',
+                 'reinforcement':('Assumed 75% lower failure hazard: 1-(1-p)^0.25; 30% higher illustrative thermal rating' if profile else '75% lower weather-trip probability and 30% higher illustrative thermal rating'),
+                 'repairs':'Not implemented; outages persist for the experiment',
+                 'probability_semantics':'Hourly direct-weather inputs; output line_failure_probability is whole-event weather-or-cascade frequency',
+                 'dependence':'Imported probabilities use conditional independent Bernoulli draws' if profile else 'Synthetic shared storm severity',
                  'objective':'Greedy training mean unserved MWh reduction / budget unit; no optimality guarantee'}}
