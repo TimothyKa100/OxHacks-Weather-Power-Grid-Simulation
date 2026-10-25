@@ -1,8 +1,10 @@
 # GridGuard
 
-A GB storm map with multi-day failure, repair and mitigation decisions: weather → line risk → DC cascades → restoration → investment comparison.
+A geographic grid stress-test and mitigation tool. It combines engineering fragility
+with bounded relative risk from the saved XGBoost model, then simulates line
+failures, DC cascades, repairs and investment decisions.
 
-The interface combines the geographic map from `feature/gb-storm-map` with the simulation and decision support from `feature/multiday-weather-recovery`.
+[Model specification](docs/MODEL_SPEC.md) · [Measured integration results](docs/HYBRID_RESULTS.md) · [Target/feature contract](config/transmission_model_contract.json)
 
 - **Map:** 478 substation buses (one per voltage level at a site) and 673 branches at 132–400 kV: 436 overhead routes from uk-grid-atlas (OSM), 51 underground 275/400 kV cables from the grid archive, 137 transformers and 49 inferred links. Every single-circuit outage but one leaves supply intact. Electrical parameters, dispatch and demand allocation remain illustrative.
 - **Weather:** synthetic geographic windstorms (single peak, persistent winds or two peaks), the tracked Storm Darragh historical replay, other locally built storms, or imported hourly GB weather / model probabilities.
@@ -12,11 +14,41 @@ The interface combines the geographic map from `feature/gb-storm-map` with the s
 
 Run a comparison, select a portfolio in the decision table to show it on the map, and pause/scrub playback. Green routes are reinforced; red routes have tower damage; orange routes tripped on overload; yellow circuits are locked out after a failed auto-reclose; faded routes have a circuit out. Cables are dashed and inferred links dotted. Observed outage dots and the historical wind-risk chart remain fixed when hypothetical interventions change the simulation. Export includes full cascade frames and decision assumptions.
 
-**Historical observations:** Darragh is the tracked example. Other storm files are local products of `scripts/build_storm_benchmark.py`; `GET /api/storms` lists those actually present. Historical gusts come from Met Office UKV via Open-Meteo. Outage observations come from distribution feeds, so timing/place correlations are contextual checks, not validation of transmission failures, predicted counts or mitigation effectiveness. Coverage shading identifies where observations exist.
+## What the model means
 
-The old `POST /api/storm` single-storm pylon animation remains for compatibility and the offline sample. Offline mode is explicitly labelled and does not produce mitigation estimates. `POST /api/experiment` still supports IEEE14 and GB experiments independently.
+The intended target is a new weather-caused transmission-branch outage in the next
+hour, conditional on operating at interval start. The pending dataset is assumed to
+supply the declared features and target; it is not in this checkout. No empirical
+transmission-failure training result is claimed.
 
-## Great Britain network
+The existing saved XGBoost model predicts distribution fault reports within 5 km of
+a line route. The UI defaults to **Engineering + relative ML risk**: a bounded risk
+redistribution among comparable lines, preserving the engineering expected number
+of line failures each hour. It runs without new data, retraining or an uploaded
+reference model. Cross-target use remains an assumption, not calibrated transmission
+reliability. Purple halos still show the raw area-risk scores as context.
+
+## Calculation
+
+1. Engineering route exposure produces a whole-line hourly probability `p_eng`.
+2. Use complete saved Darragh scores when hours match; otherwise run the saved model
+   on available raw route features. Unknown weather stays missing, rather than zero.
+   Synthetic partial-feature inference is explicitly unvalidated.
+3. Compare each score with a leave-one-out median score from
+   at least 5 and up to 12 peers: gust within 10 km/h and engineering hazard within
+   a factor of 4. Outside that support, retain engineering risk. Transfer beyond
+   the SSEN training region is an explicit, unvalidated assumption.
+4. Compute `s = logit(q_full) - logit(q_reference)` and
+   `m = clip(exp(beta*s), min_multiplier, max_multiplier)`.
+5. Rescale supported multipliers within the bounds so that
+   `sum(1 - (1-p_eng)^m) = sum(p_eng)` each hour. Beta zero reproduces engineering mode.
+6. Apply the assumed reinforcement hazard multiplier, then sample failures using
+   shared seeded random draws.
+7. Find islands, balance generation, solve DC power flows, trip overloaded branches
+   simultaneously and repeat until stable. Repair crews and reconnection operate
+   at hourly boundaries.
+8. Mark nodes as supplied, reduced supply or out of supply; zero-load nodes can
+   become deenergized. Compare energy loss, node outages, tail risk, recovery and costs.
 
 `data/gb_network.json` is generated, not hand-written. To rebuild it from a checkout of the atlas:
 
@@ -43,6 +75,38 @@ The cascade still runs on the transmission backbone; hundreds of thousands of as
 
 The same endpoint compares reinforcement plans on shared storms: no action, two simple baselines, the greedy GridGuard selection, an optional `custom_lines` plan and, in multi-day mode, a `prepared` plan that reorders the repair queue. Each plan gets paired evidence and an illustrative cost/benefit from editable `economics` assumptions; `storm_type` picks one of three windstorm presets. On the GB grid, only the 24 most frequently failing lines are evaluated individually. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
 
+## One storm chain
+
+`POST /api/storm-plan`, the **Simulate & compare** button and `python scripts/run_chain.py` run
+one chain with two outputs from the same weather.
+
+- **Local power-cut forecast (ML).** Corridor model `gb-corridor-xgb-v2` gives, for each
+  overhead route and hour, the chance of a reported distribution cut within 5 km
+  (`backend/forecast.py`).
+  - On the map it shows as purple halos (**ML power-cut forecast (this run)**), next to the real
+    reported cuts (yellow dots). Hovering a line shows its forecast and the reports near it.
+  - For historical storms, the panel charts forecast and reported corridor-hours on the same
+    scale, with totals, timing and ranking.
+- **Transmission grid stress (physics).**
+  - The chain runs the engineering route/pylon hazard, line failures, the cascade and every
+    mitigation on matched draws, including reinforcement plus prioritized repairs.
+  - It then runs post-storm restoration, cost-benefit and a recommendation.
+  - Playback slows down for each overload cascade, zooms to the tripped lines, steps through
+    the protection rounds and then returns. **Cascades in this playback** jumps to each one.
+
+The ML does not set line failures. `failure_mode: "hybrid"` remains an experimental option that
+lets it shift failure probability between comparable lines. The decision panel's **Storm chain**
+card summarises each stage. See [HYBRID_RESULTS.md](docs/HYBRID_RESULTS.md).
+
+## Demo data
+
+`demo_data/` holds only what the simulation and demo read: networks, storm replays, the detail
+graph and asset index, the v1/v2 corridor models and archived replay predictions (about 27 MB).
+The backend reads `demo_data/` when it has been built, otherwise `data/`; set `GRIDGUARD_DATA`
+to choose (see `backend/paths.py`). The full `data/` tree (~18 GB) is only needed to rebuild
+datasets or retrain. Rebuild the demo folder after retraining with
+`python scripts/build_demo_data.py`. `--check` reports when it differs from `data/`.
+
 ## Failure-probability model (XGBoost)
 
 `failure_model/` trains a calibrated XGBoost model of hourly weather-caused outage risk in each GB line's 5 km corridor. It uses SSEN's 2015–2026 fault register and ERA5 route weather (fetched on demand for any GB window), with the first 75% of hours for development and the last 25% for testing. `python -m failure_model gb-export` writes a layer that the map shows as purple corridor-risk halos (**Corridor outage risk** picker), alongside the engineering line model. The probabilities are **area-level outage risk, not verified transmission-line failures**, so the simulator refuses them as line-failure inputs. See [GB_LINE_MODEL.md](docs/GB_LINE_MODEL.md). The data comes from the `dataRefininf` archive, extracted into `data/` (git-ignored); install `requirements-model.txt`.
@@ -50,133 +114,92 @@ The same endpoint compares reinforcement plans on shared storms: no action, two 
 ## Reliable web preview
 
 From the repository root, install frontend dependencies once (`cd frontend`, `npm ci`, then `cd ..`). With Python requirements already installed, start the built frontend and API together:
+Conservation concerns each hour's hypothetical operating-line probabilities before
+reinforcement. Actual failures, cascades and recovery can differ because different
+lines break. Node outages follow the electrical solution, with no separate sampled
+physical substation-damage model. The reference is a peer statistic, not a newly
+fitted ML model. Matching reduces obvious double counting; it does not prove causality.
+
+Median pylon failure gust defaults to 265 km/h, dispersion to 0.12, beta to 0.5,
+and multiplier bounds to [0.5,2]. These are editable assumptions. Weather remains
+fixed while fragility or hybrid settings change. No probability threshold forces
+an asset to fail. Full per-asset probability/draw diagnostics are exported.
+
+## Run the app
+
+Python 3.11–3.14 and Node 20.19+ or 22.12+:
 
 ```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+npm ci --prefix frontend
 .venv/bin/python scripts/serve_preview.py
 ```
 
-On Windows use `.venv\Scripts\python.exe scripts/serve_preview.py`.
-Open **http://127.0.0.1:5001/** and keep that terminal running. For a hosted preview, add `--host 0.0.0.0 --port 5173` (or the port exposed by your host). Both the app and API use the same port. Use `--skip-build` only when a frontend build already exists.
+On Windows use `.venv\Scripts\python.exe` instead of `.venv/bin/python`.
+Open http://127.0.0.1:5001 and keep the terminal running. This serves UI and API
+on one port. For a hosted development preview, add `--host 0.0.0.0 --port 5173`.
+For separate hot reload, run Flask on 5001 and `npm run dev --prefix frontend`.
 
-A GitHub branch URL displays source files; the interactive demo needs this running HTTP server. The separate Vite development server still needs Flask running on port 5001 for simulations. A stopped API is labelled as offline; the bundled sample cannot evaluate mitigation plans.
+To try it, press **Simulate & compare**. Defaults are an explicitly synthetic stress
+test: seed **7**, **12 hours**, **190 km/h**; the fragility curve remains unchanged.
+Select a branch and open the asset inspector to see the
+engineering/full/reference probabilities, multiplier, applied probability and draw.
+Apply a suggested/custom plan to rerun that completed event unchanged.
 
-## Run the demo
+Optional uploaded pairs still use the earlier unnormalised residual experiment;
+they must cover every GB branch and match its hours/provenance. Clear the pair with
+**Use built-in model** to return to the conservative default. The old
+`data/examples/synthetic_hybrid_pair.json` remains a synthetic integration fixture.
+Raw corridor probabilities are never sampled as physical failure probabilities.
 
-Requires Python **3.11–3.14**. Python 3.13.5 was tested on Windows. The release ZIP includes the built frontend, so Node is optional for running it.
-
-Run commands from the repository root (the directory containing `backend/`, `frontend/`, and `requirements.txt`). The release ZIP wraps this same layout in a single `gridguard/` directory.
-
-In PowerShell:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m backend.app
-```
-
-On macOS/Linux:
+## Train with the pending feature/label table
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m backend.app
+.venv/bin/python -m pip install -r requirements-model.txt
+.venv/bin/python -m failure_model.paired train rows.parquet config/transmission_model_contract.json data/failure_model/models/transmission-pair-v1
+.venv/bin/python -m failure_model.paired export inference_features.parquet data/failure_model/models/transmission-pair-v1 paired.json
 ```
 
-For a source checkout, build the frontend using the **Edit and rebuild** steps below before opening the dashboard. Release ZIPs already include that build.
+These commands require the unpublished rows; they do not invent labels. The contract
+is marked `assumed_target`. Observed transmission training additionally requires
+verified asset identity, verified labels and operating/reporting exposure. Training,
+tuning, calibration and final testing are chronological and separated by storm/group
+and time gaps. Immutable versions save both models, preprocessing, calibration,
+checksums and held-out metrics. See the specification for columns and evidence gates.
 
-Open **http://127.0.0.1:5001**. Keep the terminal running; Ctrl+C stops it. Everything runs locally. Initial experiments take a few seconds; repeat settings are cached. The Flask development server binds to loopback and is intended for this local demo.
+## Network, data and limits
 
-If your Python installation cannot bootstrap pip into a venv, install into it using the parent interpreter: `python -m pip --python .venv/Scripts/python.exe install -r requirements.txt` (replace the interpreter path on macOS/Linux).
+The simulated GB backbone has **303 buses and 367 branches**, with OSM routes and
+terrain. It represents approximately 33,183 pylons using 5,615 route exposure samples.
+Reactance, ratings, generation dispatch, demand allocation and repair times remain
+illustrative. IEEE14 remains available for solver regression tests.
 
-## Edit and rebuild
+The separately documented ~4.12M-record equipment catalogue and full source/training
+archives are not bundled and are not loaded by this electrical solver. Source-scoped
+equipment records are not automatically electrical buses or verified terminal links.
 
-Requires Node **20.19+ or 22.12+** (Node 24.14.0 tested). The React version follows upstream; Vite replaces Next's routing/build layer because this is one dashboard with a separate Flask computation service.
+The tracked Darragh replay retains historical weather and distribution outage dots.
+Observations do not change when hypothetical reinforcement is applied. Weather
+reanalysis is not an archived-forecast backtest. There is no AC voltage/frequency
+model, operational protection timing, real crew routing or learned hardening effect.
+Public preparedness guidance has no numerical effect on asset failure rates.
 
-```powershell
-cd frontend
-npm ci
-npm run build
-cd ..
-.venv\Scripts\python.exe -m backend.app
+## Verification and results
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt -r requirements-model.txt
+.venv/bin/python -m pytest -q
+npm test --prefix frontend
+npm run build --prefix frontend
+.venv/bin/python scripts/benchmark_hybrid.py
 ```
 
-For hot reload, run Flask in one terminal and `cd frontend; npm run dev` in another. Open Vite's printed localhost URL. Its `/api` proxy targets Flask on port 5001. The production build is served directly by Flask, avoiding cross-origin configuration and a second runtime.
+The saved sensitivity experiment covers 27 synthetic-score cases on the actual GB
+prototype. It verifies coupling and assumptions, not predictive accuracy. It includes
+paired uncertainty, beta-zero equality, fragility sensitivity and a full mitigation
+example. Training/export tests use synthetic labels and are labelled accordingly.
 
-## A one-minute demo
-
-1. Press **Simulate** with **Synthetic storm** selected. Each press uses a new seed, so the pylons that fall change from run to run.
-2. Pick **Storm Darragh · Dec 2024** and press **Simulate**. Measured gusts sweep in from the south-west and about 2,100 real power cuts appear across NGED's areas. Darragh's gusts stay well below what topples a lattice tower, so few or no pylons fall.
-3. Watch the chart under the map: yellow bars are actual power cuts per hour, the blue line is predicted pylon collapses per hour (each scaled to its own peak; hover for exact values). The line below it gives the timing correlation and how much faster outages ran in the windiest areas than in the calmest.
-
-If the backend is not running, the page replays a bundled synthetic storm (`data/sample_storm.json`) and says so; real storms need the backend.
-
-## Monte Carlo experiment (API)
-
-The reproducible result for the **original five-hour mode** (`POST /api/experiment` with defaults) is:
-
-| Portfolio | Spend | Mean unserved energy (MWh) | Monte Carlo SE (MWh) | Major outage probability |
-| --- | ---: | ---: | ---: | ---: |
-| No action | 0 | 830.049 | 29.399 | 85.16% |
-| Weather risk / cost | 5 | 674.800 | 34.397 | 64.84% |
-| Intact power flow / cost | 5 | 497.222 | 29.266 | 47.66% |
-| GridGuard marginal benefit / cost | 5 | 497.222 | 29.266 | 47.66% |
-
-Read `data/sample_run.json` for authoritative unrounded-to-display results. GridGuard chooses **L04, L07, L01, L02**. It reduces estimated energy not served by about **40.1%** versus no action. The power-flow baseline selects the same set in this run and ties it. This is a synthetic demonstration, not evidence of real-world reliability improvement or general superiority. Different seeds may favor a baseline.
-
-## How the Monte Carlo experiment works (IEEE 14-bus)
-
-- **Network:** 14 benchmark buses, 259 MW total demand, 15 line branches and 5 transformer branches. IEEE bus numbers remain 1–14. `L01`–`L20` follow pandapower's exported branch order (transformers last), not a universal branch naming convention.
-- **Active supply:** buses 1 and 2 have the original active dispatch (219 and 40 MW in the lossless intact case) and caps (332.4 and 140 MW). Buses 3, 6 and 8 are treated as synchronous condensers with no active generation. This is an explicit model choice; original case14 generator P limits at those zero-P buses are not enabled as new reserve plants.
-- **Weather:** five one-hour exposure windows form a synthetic moving storm on schematic coordinates. Scenario severity is lognormal with log standard deviation 0.09 and mean one, shared across assets. A per-line exposure multiplier persists through the storm. Conditional trip draws are independent. These are artificial correlations, not a meteorological ensemble.
-- **Illustrative fragility:** `p = clip(0.65 × sigmoid((gust_kmh − 90) / 12) × exposure × (1 + 0.002 × rain_mm_h), 0, 0.95)` per window. The peak-reference gust control scales a Gaussian spatial footprint and storm-window strength; local gusts differ from this reference.
-- **Hardening:** 75% smaller weather-trip probability **and** 30% higher assumed thermal capacity. Hardening does not make a line invulnerable. All branches, including transformers, are eligible in this simplified model.
-- **Power flow:** a lossless DC angle solve uses benchmark series reactance and transformer taps. Every island gets its own reference angle. Scheduled generation scales down for a surplus or draws on proportional headroom for a deficit; available capacity caps supply. Demand is shed proportionally within an undersupplied island. Shed loads remain disconnected through the event. The solver checks bus-level active-power conservation.
-- **Cascades:** weather failures happen first in a window. Recompute DC flow, trip all surviving branches over rating together, recompute again, repeat until stable. Playback records the overloaded pre-trip flow and each recomputed state. Cascade rounds have zero duration in the energy accounting. Every round removes a branch, so termination is bounded by 20 removals.
-- **Thermal ratings:** the case14 ratings are not useful here, so the demo assumes `max(22 MW, 1.55 × abs(intact DC flow) + 8 MW)`. These are active-power proxies, not original IEEE equipment ratings or MVA ratings. Branch costs repeat 1, 2, 3 budget units; exposures repeat deterministically between 0.75 and 1.25.
-- **Monte Carlo:** 24 training storms select reinforcement. A separately seeded held-out bank of 16–512 storms (64–512 in the UI) evaluates all portfolios using common random numbers. Optimization never sees held-out outcomes. Seed controls both banks, with a fixed XOR domain separation for training.
-- **Selection:** greedy positive marginal training mean energy-loss reduction divided by cost. It stops when nothing affordable improves the objective, so it may leave budget unused. It is a heuristic, not an exact knapsack/global optimum. Added edges surviving longer can redistribute flows, so benefit is not assumed monotonic.
-- **Baselines:** no action; descending mean training fragility/cost; descending absolute intact power-flow/cost. The third is an electrical-flow baseline, not graph betweenness or an optimal dispatch.
-- **Metrics:** energy not served sums settled MW shed over five one-hour windows; expected energy is the Monte Carlo mean. P95 is the empirical 95th percentile. Major outage means final load shed strictly exceeds 50% of original demand. SE is the sample standard deviation divided by √N. Paired SE is computed on per-storm before-minus-after differences. These quantify simulation sampling noise only.
-
-## Verification
-
-```powershell
-.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m pytest -q
-# Re-export the real benchmark and pandapower reference flows:
-.venv\Scripts\python.exe scripts/export_benchmark.py
-# Recreate the example JSON and the offline sample storm:
-.venv\Scripts\python.exe scripts/sample_run.py
-.venv\Scripts\python.exe scripts/sample_storm.py
-cd frontend
-npm run build
-```
-
-The test suite checks benchmark identity, full-service intact dispatch, bus-level conservation, agreement with pandapower's intact DC flows, generator-free islands, generation-limited island shedding, actual overload cascade trips, bounded termination, monotonic disconnected load, energy integration, reproducibility, feasible budgets and API validation. See `docs/VALIDATION.md` for completed checks and browser evidence.
-
-## Extension points and limits
-
-`backend/weather.py:load_profile()` is the weather-provider hook; `data/sample_weather.json` is the documented input fixture. `docs/INTEGRATIONS.md` describes forecast ensembles, required geographic asset mapping and next-step **GDELT** event context. No external requests happen at app runtime.
-
-This prototype excludes AC voltage/reactive limits, transient/frequency stability, realistic relay delays, optimal redispatch, repairs outside multi-day mode, critical-load priorities and validated storm correlations. The five-window horizon, fragility and ratings are intentionally demo assumptions. It must not drive operational grid decisions.
-
-## Attribution and layout
-
-The upstream [IC Hack 2026 WildFire repository](https://github.com/ltanak/ICHack26) was inspected at **dac1afe03655081b6633ba3eeb07f45db86834aa**, including its MIT licence, Flask API, simulation loop and React simulation/mitigation components. The retained architecture and workflow are described in `ATTRIBUTION.md`; original copyright and licence text are included. Wildfire spread code, satellite assets, pretrained models, credentials and large datasets are not part of this deliverable.
-
-```text
-backend/                 Flask API, DC cascade simulator, storm engine, real-storm benchmark, mitigations
-frontend/src/            React map: UK outline, grid, storm picker, continuous playback, outage comparison
-frontend/dist/           Built browser app (included in release ZIP)
-data/ieee14.json          Pandapower benchmark export + DC reference flows
-data/gb_network.json      GB 132–400 kV grid from OSM, with terrain elevation
-data/outages/             Real unplanned power cuts (CSV) used by the storm comparison
-data/storms/              Real storms: hourly gusts + outages per storm (only Darragh is in git)
-data/sample_storm.json    Offline sample storm for the frontend
-data/sample_weather.json  Synthetic weather fixture
-data/sample_run.json      Reproducible example output
-scripts/                 Build the GB grid and storm benchmarks; re-export benchmark and samples
-tests/                   Meaningful physics/API checks
-third_party/             Retained licences
-docs/                    Architecture, integrations, validation, screenshots
-```
+Source and licence details remain in [ATTRIBUTION.md](ATTRIBUTION.md) and
+`third_party/`. Grid geometry © OpenStreetMap contributors, ODbL, via
+[uk-grid-atlas](https://github.com/jacobwright32/uk-grid-atlas). Retain attribution.

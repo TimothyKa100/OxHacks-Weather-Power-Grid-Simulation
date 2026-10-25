@@ -1,0 +1,12 @@
+{
+  "label": "Synthetic moving storm / five illustrative one-hour exposure windows",
+  "source": "Hand-authored sample; no observed or forecast weather",
+  "coordinate_system": "IEEE 14-bus schematic normalized to [0,1]; not geographic",
+  "windows": [
+    {"hour": 1, "center_x": 0.10, "center_y": 0.35, "strength": 0.78, "rain_mm_h": 8},
+    {"hour": 2, "center_x": 0.30, "center_y": 0.40, "strength": 0.95, "rain_mm_h": 16},
+    {"hour": 3, "center_x": 0.50, "center_y": 0.50, "strength": 1.00, "rain_mm_h": 24},
+    {"hour": 4, "center_x": 0.72, "center_y": 0.55, "strength": 0.95, "rain_mm_h": 18},
+    {"hour": 5, "center_x": 0.94, "center_y": 0.60, "strength": 0.78, "rain_mm_h": 9}
+  ]
+}

@@ -26,10 +26,11 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+from .paths import DATA
 
 ROOT = Path(__file__).resolve().parents[1]
-GRAPH = ROOT/'data/grid/detail_graph.json'
-CACHE = ROOT/'data/view_networks'
+GRAPH = DATA/'grid/detail_graph.json'
+CACHE = DATA/'view_networks'
 VIEW_BUSES = 300
 OUTSIDE_BUSES = 100
 GRID = 10

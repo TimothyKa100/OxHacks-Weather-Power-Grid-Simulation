@@ -15,9 +15,10 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+from .paths import DATA
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT/'data/grid/asset_index.parquet'
+INDEX = DATA/'grid/asset_index.parquet'
 KINDS = ['generation', 'substation', 'transformer', 'storage', 'converter', 'compensator', 'switchgear', 'distributed_generator']
 GRID = 12              # view divided into GRID x GRID cells for spreading
 SPREAD = 1.0           # importance lost per doubling of better assets already in the same cell

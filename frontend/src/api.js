@@ -45,7 +45,7 @@ export const fetchAssets = ([x0, y0, x1, y1], limit = 1000, signal, network = 'g
 export const fetchViewNetwork = ([x0, y0, x1, y1], signal) =>
   fetch(`/api/view-network?x0=${x0}&y0=${y0}&x1=${x1}&y1=${y1}`, {signal}).then(r => (r.ok ? r.json() : null));
 
-// Corridor outage-risk layers (display only; never sent to the simulator).
+// Raw corridor overlay; the backend hybrid separately derives a relative signal.
 export const fetchRiskLayers = () => request('/api/corridor-risk', {}, 5000);
 export const fetchRiskLayer = id => request(`/api/corridor-risk?id=${encodeURIComponent(id)}`, {}, 30000);
 

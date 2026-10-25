@@ -60,7 +60,7 @@ def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(value, indent=2, default=str, allow_nan=False) + "\n")
+    temp.write_text(json.dumps(value, indent=2, default=str, allow_nan=False) + "\n", newline="\n")
     temp.replace(path)
 
 

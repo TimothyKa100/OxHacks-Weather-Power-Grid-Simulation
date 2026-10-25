@@ -10,12 +10,13 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import spsolve
+from .paths import DATA
 from .weather import fragility, scenarios, load_profile, failure_probability, multiday_scenarios
 from .decisions import validate_economics, cost_benefit, paired_evidence, public_guidance
 
 PARALLEL_MIN_BRANCHES=40  # small benchmarks stay serial; process start-up would dominate
 MAX_WORKERS=3  # each worker holds its own network copy and solve cache
-NETWORKS={'ieee14':'data/ieee14.json','gb':'data/gb_network.json'}
+NETWORKS={'ieee14':'ieee14.json','gb':'gb_network.json'}  # relative to paths.DATA
 
 class Network:
     def __init__(self, name='ieee14'):
@@ -24,7 +25,7 @@ class Network:
             from .view_network import path_for  # a network reduced to a map view (view_network.py)
             source = path_for(name)
         else:
-            source = Path(__file__).resolve().parents[1]/NETWORKS[name]
+            source = DATA/NETWORKS[name]
         self.data = json.loads(Path(source).read_text())
         self.geographic=bool(self.data.get('geographic'))
         self.buses, self.branches = self.data['buses'], self.data['branches']
@@ -109,20 +110,42 @@ def simulate(net, scenario, hardened=(), playback=False):
     dt=scenario.get('dt_hours',1.)
     peak_shed=0.; repairs=0; outage_hours=0.; last_outage_end=0.
     probabilities=np.zeros(net.m)
+    eligible=np.zeros(net.m,dtype=bool); weather_draws=np.zeros(net.m); sampled=np.zeros(net.m,dtype=bool)
+    ever_out=np.zeros(net.n,dtype=bool); ever_impaired=np.zeros(net.n,dtype=bool)
+    peak_out=0; peak_impaired=0
     def state(hour,kind,new_trips=(),gust=None):
-        nonlocal demand
+        nonlocal demand,peak_out,peak_impaired
         solution=net.solve(tuple(active),tuple(demand.round(9)))
         demand=solution['served'].copy()  # shed loads stay disconnected for this event
         ratios=np.abs(solution['flows'])/limits
+        # Nodes lose service through islanding/capacity shortfall; no invented
+        # independent substation-damage probability is sampled.
+        energized=np.zeros(net.n,dtype=bool)
+        for island in solution['islands']:
+            energized[island]=net.capacity[island].sum()>1e-6
+        has_load=net.load>1e-6
+        out=has_load & (demand<=1e-6)
+        reduced=has_load & ~out & (demand<net.load-1e-6)
+        impaired=out | reduced | (~has_load & ~energized)
+        node_status=np.where(has_load,np.where(out,'out_of_supply',np.where(reduced,'reduced_supply','supplied')),
+                             np.where(energized,'energized','deenergized'))
+        ever_out[:]|=out; ever_impaired[:]|=impaired
+        peak_out=max(peak_out,int(out.sum())); peak_impaired=max(peak_impaired,int(impaired.sum()))
         if playback:
             frames.append({'hour':hour,'kind':kind,'new_trips':[net.branches[i]['id'] for i in new_trips],
                 'served_mw':round(float(demand.sum()),3),'shed_mw':round(float(net.load.sum()-demand.sum()),3),
                 'served_by_bus':demand.round(4).tolist(),'generation_mw':solution['generation'].round(4).tolist(),
                 'flows_mw':solution['flows'].round(4).tolist(),'loading':ratios.round(4).tolist(),
                 'status':causes.copy(),'islands':[[i+1 for i in c] for c in solution['islands']],
+                'node_status':node_status.tolist(),'nodes_out_of_supply':int(out.sum()),
+                'nodes_reduced_supply':int(reduced.sum()),'nodes_deenergized':int((~energized & ~has_load).sum()),
                 'failure_probability':np.asarray(probabilities).round(6).tolist(),
                 'timestamp':scenario.get('timestamps',[None]*len(scenario['gust']))[int(hour)-1] if hour else None,
                 'gust_kmh':gust.round(1).tolist() if gust is not None else [0.]*net.m})
+            if hour and 'hybrid_diagnostics' in scenario:
+                frames[-1]['probability_diagnostics']={**scenario['hybrid_diagnostics'][int(hour)-1],
+                    'applied_probability':probabilities.tolist(),'hardening_hazard_multiplier':np.where(hard,.25,1.).tolist(),
+                    'uniform_draw':weather_draws.tolist(),'eligible':eligible.tolist(),'sampled_weather_failure':sampled.tolist()}
         return ratios
     state(0,'Intact network')
     for t in range(len(scenario['gust'])):
@@ -143,8 +166,12 @@ def simulate(net, scenario, hardened=(), playback=False):
             probabilities[hard]=failure_probability(gust[hard],scenario['rain'][t][hard],net.exposure[hard],dt,True)
         if 'failure_probability' in scenario:
             # Supplied predictions are baseline one-hour conditional probabilities.
-            probabilities=1.-(1.-scenario['failure_probability'][t])**np.where(hard,.25,1.)
-        weather=np.flatnonzero(active & (scenario['draws'][t]<probabilities))
+            supplied=scenario['failure_probability'][t]
+            with np.errstate(divide='ignore'):
+                probabilities=-np.expm1(np.log1p(-supplied)*np.where(hard,.25,1.))
+        eligible=active.copy(); weather_draws=scenario['draws'][t]
+        sampled=eligible & (weather_draws<probabilities)
+        weather=np.flatnonzero(sampled)
         for i in weather:
             active[i]=False; causes[i]='weather'; ever_failed[i]=True
             if recovery: repair_remaining[i]=scenario['repair_hours'][t,i]
@@ -169,7 +196,10 @@ def simulate(net, scenario, hardened=(), playback=False):
             'peak_shed_mw':peak_shed,'repairs':repairs,'outage_hours':outage_hours,
             'recovery_hour':(last_outage_end+dt if outage_hours else 0.) if float(net.load.sum()-demand.sum())<=1e-5 else None,
             'failed_lines':int(ever_failed.sum()),'cascade_trips':trips,'frames':frames,
-            'failed_mask':ever_failed.astype(int).tolist()}
+            'failed_mask':ever_failed.astype(int).tolist(),
+            'nodes_ever_out_of_supply':int(ever_out.sum()),'nodes_ever_impaired':int(ever_impaired.sum()),
+            'peak_nodes_out_of_supply':peak_out,'peak_nodes_impaired':peak_impaired,
+            'node_outage_mask':ever_out.astype(int).tolist()}
 
 _pool=None
 _parallel_unavailable=False
@@ -262,11 +292,31 @@ def summarize(results, total):
         'mean_shed_mw':round(float(np.mean([r['final_shed_mw'] for r in results])),3),
         'mean_failed_lines':round(float(np.mean([r['failed_lines'] for r in results])),3),
         'mean_cascade_trips':round(float(np.mean([r['cascade_trips'] for r in results])),3),
+        'mean_nodes_ever_out_of_supply':float(np.mean([r['nodes_ever_out_of_supply'] for r in results])),
+        'mean_peak_nodes_out_of_supply':float(np.mean([r['peak_nodes_out_of_supply'] for r in results])),
+        'mean_nodes_ever_impaired':float(np.mean([r['nodes_ever_impaired'] for r in results])),
+        'node_outage_probability':np.mean([r['node_outage_mask'] for r in results],axis=0).tolist(),
         'line_failure_probability':np.mean([r['failed_mask'] for r in results],axis=0).round(4).tolist(),
         'losses_mwh':energy.round(3).tolist()}
 
+def recommend(portfolios):
+    """The plan to adopt: highest net benefit among plans whose paired gain is distinguishable from zero.
+
+    'Distinguishable' means the approximate 95% interval of the mean paired gain excludes zero
+    on the held-out bank; otherwise no action is recommended. Custom plans are compared too.
+    """
+    supported=[k for k,p in portfolios.items() if k!='none' and p['evidence']['gain_ci95_mwh'][0]>0 and p['economics']['net_benefit_gbp']>0]
+    if not supported:
+        return {'portfolio':'none','selected':[],'reason':'No plan has a held-out gain whose 95% interval excludes zero and a positive net benefit'}
+    key=max(supported,key=lambda k:(portfolios[k]['economics']['net_benefit_gbp'],portfolios[k]['paired_gain_mwh']))
+    p=portfolios[key]
+    return {'portfolio':key,'selected':p['selected'],'paired_gain_mwh':p['paired_gain_mwh'],'gain_ci95_mwh':p['evidence']['gain_ci95_mwh'],
+            'net_benefit_gbp':p['economics']['net_benefit_gbp'],'considered':sorted(portfolios),'supported':sorted(supported),
+            'reason':'Highest net benefit among plans whose held-out paired gain interval excludes zero'}
+
+
 def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="legacy", hours=48, crews=2, weather=None,
-                   storm_type='single_peak', custom_lines=None, economics=None):
+                   storm_type='single_peak', custom_lines=None, economics=None, recovery_hours=0):
     import time
     started=time.perf_counter()
     economics=validate_economics(economics)
@@ -282,8 +332,8 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
     # View networks (backend/view_network.py) are larger, so their search uses a smaller training bank.
     training_samples,max_candidates=(6,6) if net.name.startswith('view:') else (24,24)
     if mode=='multiday':
-        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,training_samples,hours,weather,crews,storm_type)
-        heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews,storm_type)
+        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,training_samples,hours,weather,crews,storm_type,recovery_hours)
+        heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews,storm_type,recovery_hours)
     else:
         training=scenarios(net,intensity,seed ^ 0xA51C,training_samples)
         heldout=scenarios(net,intensity,seed,samples)
@@ -317,13 +367,18 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
     # not geographic crew positioning. Test its impact against the original queue.
     frequency=np.mean([r['failed_mask'] for r in training_before],axis=0)
     priority=sorted(range(net.m),key=lambda i:(0,-(training_loss-losses[(i,)]),i) if (i,) in losses else (1,-frequency[i],i))
-    if mode=='multiday': portfolios['prepared']=[]
+    # Repair-queue plans: prioritized repairs alone, and on top of the suggested reinforcement.
+    queued=('prepared','combined')
+    if mode=='multiday':
+        portfolios['prepared']=[]
+        if selected: portfolios['combined']=list(selected)
     def bank_for(key):
-        return [dict(s,repair_priority=priority) for s in heldout] if key=='prepared' else heldout
+        return [dict(s,repair_priority=priority) for s in heldout] if key in queued else heldout
     result={}
-    shared=[key for key in portfolios if key!='prepared']
+    shared=[key for key in portfolios if key not in queued]
     raw=dict(zip(shared,evaluate_many(net,heldout,[portfolios[key] for key in shared])))
-    if 'prepared' in portfolios: raw['prepared']=evaluate(net,bank_for('prepared'),[])
+    for key in queued:
+        if key in portfolios: raw[key]=evaluate(net,bank_for(key),portfolios[key])
     # Typical stress example chosen by the unmitigated median loss, before viewing intervention outcome.
     order=np.argsort([r['unserved_mwh'] for r in raw['none']]); demo=int(order[len(order)//2])
     before=np.array([r['unserved_mwh'] for r in raw['none']])
@@ -337,9 +392,11 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
             'economics':cost_benefit(float(paired.mean()),float(net.cost[lines].sum()) if lines else 0,economics,investment_for(lines)),
             'playback':simulate(net,bank_for(key)[demo],lines,True)}
         if key=='prepared': result[key]['economics']['scope']='Queue ordering only; dispatch/travel/staff costs excluded'
+        if key=='combined': result[key]['economics']['scope']='Suggested reinforcement plus prioritized repair queue; queue dispatch/travel/staff costs excluded'
     for row in assets:
         row['training_failure_frequency']=float(frequency[ids[row['id']]])
-    return {'config':{'network':net.name,'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':training_samples,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews,
+    recommendation=recommend(result)
+    return {'recommendation':recommendation,'config':{'network':net.name,'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':training_samples,'mode':mode,'hours':len(heldout[0]['gust']),'recovery_hours':recovery_hours,'crews':crews,
                       'storm_type':storm_type,'custom_lines':custom_lines,'economics':economics},
         'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':weather if weather is not None else (load_profile() if mode=='legacy' else {'source':'Synthetic multi-day storm; illustrative route exposure'}),
         'decisions':{'assets':sorted(assets,key=lambda a:-a['training_gain_per_unit']),
@@ -351,7 +408,7 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
                                    +(f' Only the {len(candidates)} most frequently failing of {net.m} assets were evaluated.' if len(candidates)<net.m else '')},
         'replay':{'weather_source':'imported' if weather is not None else 'synthetic',
                   'request':{'network':net.name,'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'mode':mode,
-                             'hours':len(heldout[0]['gust']),'crews':crews,'storm_type':storm_type,
+                             'hours':len(heldout[0]['gust'])-(len(heldout[0]['gust'])-len(weather['hours']) if weather is not None else 0),'recovery_hours':recovery_hours,'crews':crews,'storm_type':storm_type,
                              'weather':weather,'economics':economics,'custom_lines':custom_lines},
                   'comparison':'Same weather, failure draws, repair draws and median no-action playback scenario for all plans'},
         'demo_scenario_index':demo,'demo_selection':'Median unmitigated held-out loss; same scenario for every portfolio',

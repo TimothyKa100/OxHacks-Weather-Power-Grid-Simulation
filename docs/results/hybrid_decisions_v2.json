@@ -1,0 +1,161 @@
+{
+  "scope": "GB prototype network; v2 corridor model through the bounded hybrid (beta 0.5, multiplier 0.5-2, hourly expected failures preserved)",
+  "samples": 16,
+  "budget": 3,
+  "cases": [
+    {
+      "scenario": "synthetic",
+      "peak_gust": 190,
+      "hours": 12,
+      "seed": 7,
+      "model": "gb-corridor-xgb-v2",
+      "feature_coverage": "v2_reduced_model",
+      "lines_tilted": 435,
+      "multiplier_range": [
+        0.5,
+        2.0
+      ],
+      "no_action": {
+        "engineering": {
+          "mean_unserved_mwh": 12697.124,
+          "p95_unserved_mwh": 27999.121,
+          "mean_failed_lines": 35.062,
+          "mean_nodes_ever_out_of_supply": 17.125
+        },
+        "hybrid": {
+          "mean_unserved_mwh": 12077.577,
+          "p95_unserved_mwh": 22455.234,
+          "mean_failed_lines": 34.312,
+          "mean_nodes_ever_out_of_supply": 16.688
+        }
+      },
+      "portfolios": {
+        "risk": {
+          "engineering_choice": [
+            "L222",
+            "L235",
+            "L224"
+          ],
+          "hybrid_choice": [
+            "L222",
+            "L235",
+            "L078"
+          ],
+          "same": false,
+          "engineering_choice_under": {
+            "engineering": {
+              "mean_unserved_mwh": 12450.69,
+              "p95_unserved_mwh": 28150.114,
+              "mean_failed_lines": 32.625,
+              "mean_nodes_ever_out_of_supply": 16.312
+            },
+            "hybrid": {
+              "mean_unserved_mwh": 11776.955,
+              "p95_unserved_mwh": 22310.314,
+              "mean_failed_lines": 32.062,
+              "mean_nodes_ever_out_of_supply": 15.562
+            }
+          },
+          "hybrid_choice_under": {
+            "engineering": {
+              "mean_unserved_mwh": 12287.138,
+              "p95_unserved_mwh": 28063.77,
+              "mean_failed_lines": 32.812,
+              "mean_nodes_ever_out_of_supply": 15.438
+            },
+            "hybrid": {
+              "mean_unserved_mwh": 11686.413,
+              "p95_unserved_mwh": 22310.314,
+              "mean_failed_lines": 32.25,
+              "mean_nodes_ever_out_of_supply": 15.062
+            }
+          }
+        },
+        "optimized": {
+          "engineering_choice": [
+            "L216",
+            "L140"
+          ],
+          "hybrid_choice": [
+            "L140",
+            "L138"
+          ],
+          "same": false,
+          "engineering_choice_under": {
+            "engineering": {
+              "mean_unserved_mwh": 10769.453,
+              "p95_unserved_mwh": 26471.693,
+              "mean_failed_lines": 34.25,
+              "mean_nodes_ever_out_of_supply": 14.938
+            },
+            "hybrid": {
+              "mean_unserved_mwh": 10358.541,
+              "p95_unserved_mwh": 18627.389,
+              "mean_failed_lines": 33.5,
+              "mean_nodes_ever_out_of_supply": 14.812
+            }
+          },
+          "hybrid_choice_under": {
+            "engineering": {
+              "mean_unserved_mwh": 11996.615,
+              "p95_unserved_mwh": 27948.754,
+              "mean_failed_lines": 34.0,
+              "mean_nodes_ever_out_of_supply": 15.125
+            },
+            "hybrid": {
+              "mean_unserved_mwh": 11600.476,
+              "p95_unserved_mwh": 22404.867,
+              "mean_failed_lines": 33.312,
+              "mean_nodes_ever_out_of_supply": 15.0
+            }
+          }
+        }
+      },
+      "seconds": 165.9
+    },
+    {
+      "scenario": "darragh-2024",
+      "peak_gust": 190,
+      "hours": 60,
+      "seed": 7,
+      "model": "gb-corridor-xgb-v2",
+      "feature_coverage": "archived_complete_features",
+      "lines_tilted": 436,
+      "multiplier_range": [
+        0.5,
+        2.0
+      ],
+      "no_action": {
+        "engineering": {
+          "mean_unserved_mwh": 0.0,
+          "p95_unserved_mwh": 0.0,
+          "mean_failed_lines": 0.062,
+          "mean_nodes_ever_out_of_supply": 0.0
+        },
+        "hybrid": {
+          "mean_unserved_mwh": 0.0,
+          "p95_unserved_mwh": 0.0,
+          "mean_failed_lines": 0.062,
+          "mean_nodes_ever_out_of_supply": 0.0
+        }
+      },
+      "portfolios": {
+        "risk": {
+          "engineering_choice": [
+            "L046"
+          ],
+          "hybrid_choice": [
+            "L046"
+          ],
+          "same": true
+        },
+        "optimized": {
+          "engineering_choice": [],
+          "hybrid_choice": [],
+          "same": true
+        }
+      },
+      "seconds": 45.8
+    }
+  ]
+}

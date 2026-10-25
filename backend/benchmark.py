@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .paths import DATA
 from .storm import GUSTINESS, altitude_factor, model_info, route_samples, simulate_gusts, planning_exposure
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +28,7 @@ def _list_storms():
     """Every built storm on disk, oldest first. Storm files are local data (most are not
     in git), so the list is whatever scripts/build_storm_benchmark.py has written here."""
     storms = []
-    for path in sorted((ROOT/'data/storms').glob('*.json')):
+    for path in sorted((DATA/'storms').glob('*.json')):
         try:
             s = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
@@ -36,7 +37,7 @@ def _list_storms():
             continue  # not a storm file
         gusts = [g for hour in s['grid']['gust_kmh'] for row in hour for g in row if g is not None]
         storms.append({'id': s['id'], 'name': s['name'], 'start': s['start'], 'hours': s['hours'],
-                       'file': str(path.relative_to(ROOT)), 'operators': s.get('operators', [s.get('operator')]),
+                       'file': path.relative_to(DATA).as_posix(), 'operators': s.get('operators', [s.get('operator')]),
                        'outages': len(s['outages']), 'peak_gust_kmh': round(max(gusts)) if gusts else None})
     return sorted(storms, key=lambda s: s['start'])
 
@@ -47,7 +48,7 @@ STORMS = {s['id']: s['file'] for s in STORM_LIST}
 
 @lru_cache(maxsize=4)
 def load_storm(storm_id):
-    return json.loads((ROOT/STORMS[storm_id]).read_text(encoding='utf-8'))
+    return json.loads((DATA/STORMS[storm_id]).read_text(encoding='utf-8'))
 
 
 class Projection:
@@ -83,9 +84,10 @@ def spearman(a, b):
     return float(np.corrcoef(rank(a), rank(b))[0, 1]) if len(a) > 2 else float('nan')
 
 
-def run_real_storm(net, storm_id='darragh-2024', seed=1):
+def run_real_storm(net, storm_id='darragh-2024', seed=1, median_gust=265., dispersion=.12):
     storm = load_storm(storm_id)
     rng = np.random.default_rng(seed)
+    weather_rng = np.random.default_rng(seed)
     proj = Projection(net)
     samples = route_samples(net)
     hours = storm['hours']
@@ -100,9 +102,9 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     height = np.array([net.branches[i]['tower_height_m'] for i in samples['line']])
     terrain = altitude_factor(samples['ele'], height)/altitude_factor(np.maximum(s_model_ele, 0), height)
     sample_gust = np.nan_to_num(np.array([bilinear(gust_grid[t], lons, lats, s_lon, s_lat) for t in range(hours)]), nan=0.)
-    gust_at = lambda t: sample_gust[t]*terrain*rng.lognormal(0, GUSTINESS, len(s_lon))
+    gust_at = lambda t: sample_gust[t]*terrain*weather_rng.lognormal(0, GUSTINESS, len(s_lon))
 
-    frames, hazard, hardened = simulate_gusts(net, hours, gust_at, rng)
+    frames, hazard, hardened = simulate_gusts(net, hours, gust_at, rng, median_gust=median_gust, dispersion=dispersion)
 
     # Coverage: route samples inside cells where the outage feed has ever reported anything.
     size = storm['coverage_cell']; covered_cells = {tuple(c) for c in storm['coverage']}
@@ -145,9 +147,14 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     ox, oy = proj.xy([o[0] for o in storm['outages']], [o[1] for o in storm['outages']])
     cell_w, cell_h = step*proj.k, step/(proj.y1-proj.y0)
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
-    return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames,
-            'planning_weather':planning_exposure(net,frames,hazard,storm['timestamps'],
-                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",hardened),
+    exposure=planning_exposure(net,frames,hazard,storm['timestamps'],
+                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",median_gust,dispersion,hardened)
+    from .ml_risk import route_weather_features
+    exposure['ml_weather_source']='UKV route gusts before terrain correction and gust noise; different weather product from ERA5 training. Rain, temperature and direction unavailable.'
+    for row,features in zip(exposure['hours'],route_weather_features(net,sample_gust)):
+        row['ml_weather']=features
+    return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net,median_gust,dispersion), 'frames': frames,
+            'planning_weather':exposure,
             'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],

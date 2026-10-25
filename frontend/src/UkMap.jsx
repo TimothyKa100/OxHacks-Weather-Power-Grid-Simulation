@@ -9,7 +9,9 @@ const DOWN = {weather: '#e5484d', pylon: '#e5484d', overload: '#f2994a', transie
 const BUS = {powered: '#c9d6e2', dark: '#e5484d'};
 const OUTAGE = '#ffd27a';
 const lineColor = (status, kv) => (status === 'online' ? LINE[kv] || LINE[275] : DOWN[status] || DOWN.pylon);
-const isDark = (frame, i, load) => load > 0 && frame.served_by_bus[i] < load - 0.5;
+const isDark = (frame, i, load) => frame.node_status
+  ? ['out_of_supply','reduced_supply','deenergized'].includes(frame.node_status[i])
+  : load > 0 && frame.served_by_bus[i] < load - 0.5;
 const STATUS_TEXT = {weather: 'tower damage (crew repair)', online: 'in service', pylon: 'pylon down', overload: 'tripped on overload (remote reclose)',
                      transient: 'locked out after failed auto-reclose (remote reclose)'};
 const KIND_TEXT = {line: 'overhead line', cable: 'underground cable', transformer: 'transformer', link: 'inferred link'};
@@ -27,7 +29,7 @@ const RISK_LOW = '#3a2d5c';
 const RISK_HIGH = '#d08cff';
 export const riskLevel = p => Math.min(1, Math.max(0, (Math.log10(Math.max(p, 1e-4)) + 4) / (4 + Math.log10(0.3))));
 
-export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, risk, onView}) {
+export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, risk, onView, focus, cascade, lineNotes}) {
   const geo = useMemo(() => mapFrame(network.buses), [network]);
   const shapes = useMemo(() => {
     const index = new Map(network.buses.map((b, i) => [b.id, i]));
@@ -40,7 +42,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
       const route = (e.geometry || []).map(([x, y]) => geo.px(x, y));
       if (route.length < 2) {
         const points = ends;
-        return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[0]};
+        return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[0], raw: points};
       }
       const gap = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
       const flipped = gap(route[0], ends[1]) + gap(route[route.length - 1], ends[0]) < gap(route[0], ends[0]) + gap(route[route.length - 1], ends[1]);
@@ -49,7 +51,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
       const first = gap(path[0], ends[0]) < near ? ends[0] : path[0];
       const last = gap(path[path.length - 1], ends[1]) < near ? ends[1] : path[path.length - 1];
       const points = [first, ...path.slice(1, -1), last];
-      return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[Math.floor(points.length / 2)]};
+      return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[Math.floor(points.length / 2)], raw: points};
     });
     return {buses, routes};
   }, [network, geo]);
@@ -57,7 +59,8 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
   const state = timeline ? stateAt(timeline, t) : null;
   const fadeStep = state ? quantize(state.fade, 0.1) : 1;
   const storm = timeline ? stormAt(timeline, t) : null;
-  const {wrapRef, svgRef, box, view, zoomBy, reset} = useZoom(outline.width, outline.height);
+  const {wrapRef, svgRef, box, view, zoomBy, reset, center, animateTo, fit} = useZoom(outline.width, outline.height);
+  useFocus(focus, network, shapes.routes, center, animateTo, fit);
   const assets = useViewAssets(geo, view.box, network.id || 'gb', onView);
   // Marks grow slower than the zoom so detail separates instead of just getting bigger.
   const s = view.k ** -0.75;
@@ -86,8 +89,9 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
           pointerEvents="none"
         />
       )}
-      {risk && <CorridorRisk network={network} routes={shapes.routes} risk={risk} s={s} />}
-      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} s={s} />
+      {risk && <g opacity={cascade ? 0.25 : 1}><CorridorRisk network={network} routes={shapes.routes} risk={risk} s={s} /></g>}
+      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} notes={lineNotes} s={s} />
+      {cascade && <CascadeTrips network={network} routes={shapes.routes} ids={cascade.tripped} t={t} s={s} />}
       {assets && <Assets data={assets} geo={geo} network={network} state={state} fadeStep={fadeStep} s={s} />}
       <Buses network={network} positions={shapes.buses} state={state} fadeStep={fadeStep} s={s} />
       {run?.outages && timeline && <Outages outages={run.outages} times={timeline.outageTimes} geo={geo} t={layerTime(t)} s={s} />}
@@ -109,6 +113,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
           );
         })}
     </svg>
+      {cascade && <div className="cascade-banner" role="status">Cascade · hour {cascade.hour} · {cascade.label}</div>}
       <div className="zoom-controls">
         <button type="button" onClick={() => zoomBy(2)} disabled={view.k >= MAX_ZOOM} aria-label="Zoom in">+</button>
         <button type="button" onClick={() => zoomBy(0.5)} disabled={view.k <= 1} aria-label="Zoom out">−</button>
@@ -257,11 +262,69 @@ function useZoom(width, height) {
     };
   }, [pan, zoomAt]);
 
-  return {wrapRef, svgRef, box, view, zoomBy, reset};
+  // Glide to a view (used to focus on a cascade and to return afterwards).
+  const timer = useRef(null);
+  const centerNow = useRef(center);
+  centerNow.current = center;
+  const animateTo = useCallback((target, ms = 700) => {
+    clearInterval(timer.current);
+    const startedAt = performance.now();
+    const from = centerNow.current, to = clamp(target);
+    timer.current = setInterval(() => {
+      const u = Math.min(1, (performance.now() - startedAt) / ms), e = u * u * (3 - 2 * u);
+      setCenter(clamp({k: Math.exp(Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e),
+                       cx: from.cx + (to.cx - from.cx) * e, cy: from.cy + (to.cy - from.cy) * e}));
+      if (u >= 1) clearInterval(timer.current);
+    }, 1000 / 30);
+  }, [clamp]);
+  useEffect(() => () => clearInterval(timer.current), []);
+  // The view that shows a box (svg units) with some margin, no closer than FOCUS_ZOOM.
+  const fit = useCallback(([x0, y0, x1, y1]) => {
+    const k = Math.min(FOCUS_ZOOM, base[0] / Math.max(1e-6, (x1 - x0) * 1.6), base[1] / Math.max(1e-6, (y1 - y0) * 1.6));
+    return {k: Math.max(1, k), cx: (x0 + x1) / 2, cy: (y0 + y1) / 2};
+  }, [base]);
+
+  return {wrapRef, svgRef, box, view, zoomBy, reset, center, animateTo, fit};
+}
+
+const FOCUS_ZOOM = 6;
+
+// While `focus` lists branches (a cascade), glide to them; afterwards glide back to the earlier view.
+function useFocus(focus, network, routes, center, animateTo, fit) {
+  const saved = useRef(null);
+  const key = focus?.length ? focus.join(',') : '';
+  const centerRef = useRef(center);
+  centerRef.current = center;
+  useEffect(() => {
+    if (!key) {
+      if (saved.current) { animateTo(saved.current); saved.current = null; }
+      return;
+    }
+    const index = new Map(network.branches.map((e, i) => [e.id, i]));
+    const points = focus.flatMap(id => routes[index.get(id)]?.raw || []);
+    if (!points.length) return;
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    if (!saved.current) saved.current = centerRef.current;
+    animateTo(fit([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]));
+  }, [key]);  // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+// Lines tripped by the cascade so far: a pulsing halo so each protection round stands out.
+function CascadeTrips({network, routes, ids, t, s = 1}) {
+  const index = new Map(network.branches.map((e, i) => [e.id, i]));
+  const pulse = 0.55 + 0.45 * Math.sin(t * 2 * Math.PI / 0.04);
+  return (
+    <g aria-hidden="true" pointerEvents="none">
+      {ids.map(id => index.has(id) && (
+        <polyline key={id} points={routes[index.get(id)].points} fill="none" stroke={DOWN.overload}
+          strokeOpacity={0.35 + 0.4 * pulse} strokeWidth={(4 + 3 * pulse) * s} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+    </g>
+  );
 }
 
 // Lines and buses only change at an hourly event and during its short fade.
-const Lines = memo(function Lines({network, routes, state, geo, hardened, selected, onSelect, s=1}) {
+const Lines = memo(function Lines({network, routes, state, geo, hardened, selected, onSelect, notes, s=1}) {
   return (
     <g>
       {network.branches.map((e, i) => {
@@ -290,6 +353,7 @@ const Lines = memo(function Lines({network, routes, state, geo, hardened, select
                 {e.kv ? ` · ${e.kind === 'transformer' && e.kv_low ? `${e.kv}/${e.kv_low}` : e.kv} kV` : ''}
                 {e.kind && e.kind !== 'line' && e.name ? ` · ${KIND_TEXT[e.kind]}` : ''} · {STATUS_TEXT[status] || status}
                 {partial ? ` · ${inService} of ${e.circuits} circuits in service` : ''}
+                {notes?.[i] ? ` · ${notes[i]}` : ''}
               </title>
             </polyline>
             <polyline points={routes[i].points} fill="none" stroke="transparent" strokeWidth={9 * s} />
@@ -308,7 +372,7 @@ const Lines = memo(function Lines({network, routes, state, geo, hardened, select
       })}
     </g>
   );
-}, (a, b) => a.network === b.network && a.routes === b.routes && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep && a.hardened === b.hardened && a.selected === b.selected && a.onSelect === b.onSelect && a.s === b.s);
+}, (a, b) => a.network === b.network && a.routes === b.routes && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep && a.hardened === b.hardened && a.selected === b.selected && a.onSelect === b.onSelect && a.notes === b.notes && a.s === b.s);
 
 const Buses = memo(function Buses({network, positions, state, s=1}) {
   return (
@@ -319,10 +383,11 @@ const Buses = memo(function Buses({network, positions, state, s=1}) {
         const darkBefore = state ? isDark(state.previous, i, b.load_mw) : false;
         const fill = mix(darkBefore ? BUS.dark : BUS.powered, darkNow ? BUS.dark : BUS.powered, state ? state.fade : 1);
         return (
-          <circle key={b.id} cx={positions[i][0]} cy={positions[i][1]} r={Math.max(1.2, Math.min(3.2, Math.sqrt(b.load_mw) / 9)) * s} fill={fill} className="bus" style={{strokeWidth: 0.6 * s}}>
+          <circle key={b.id} data-node-status={state?.frame.node_status?.[i]||'supplied'} cx={positions[i][0]} cy={positions[i][1]} r={Math.max(1.2, Math.min(3.2, Math.sqrt(b.load_mw) / 9)) * s} fill={fill} className="bus" style={{strokeWidth: 0.6 * s}}>
             <title>
               Substation {b.id}
-              {b.kv ? ` · ${b.kv} kV` : ''}: {darkNow ? 'losing supply' : 'supplied'}
+              {b.kv ? ` · ${b.kv} kV` : ''}: {state?.frame.node_status?.[i]?.replaceAll('_',' ')||(darkNow ? 'losing supply' : 'supplied')}
+              {` · ${served.toFixed(1)} / ${b.load_mw.toFixed(1)} MW served`}
             </title>
           </circle>
         );

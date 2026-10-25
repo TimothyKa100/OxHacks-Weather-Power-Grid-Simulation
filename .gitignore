@@ -31,3 +31,11 @@ data/failure_model/gb_weather/
 data/failure_model/exports/*_storm-plan_comparison.json
 data/sensitivity/
 data/view_networks/
+
+# Demo data (scripts/build_demo_data.py). Grid-archive derivatives and locally built storms keep
+# the data/ policy above: built locally, not committed (mixed source licences; see grid/ATTRIBUTION.md).
+demo_data/view_networks/
+demo_data/grid/detail_graph.json
+demo_data/grid/asset_index.parquet
+demo_data/storms/*.json
+!demo_data/storms/darragh-2024.json

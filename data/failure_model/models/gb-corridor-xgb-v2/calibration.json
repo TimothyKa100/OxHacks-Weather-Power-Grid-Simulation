@@ -1,0 +1,26 @@
+{
+  "full": {
+    "method": "seasonal_logistic",
+    "coefficients": [
+      0.9929838891191526,
+      0.18553976326420735,
+      -0.09848609817351915,
+      0.08168441774859046
+    ],
+    "intercept": -0.09508877346623576,
+    "inputs": [
+      "margin",
+      "log1p(max(gust_max_kmh-40,0))",
+      "month_sin",
+      "month_cos"
+    ]
+  },
+  "reduced": {
+    "method": "sigmoid",
+    "coefficient": 0.9330138174023624,
+    "intercept": -0.09656003160843855
+  },
+  "period_start": "2023-01-17 12:00:00+00:00",
+  "period_end": "2023-11-27 16:00:00+00:00",
+  "events": 563
+}

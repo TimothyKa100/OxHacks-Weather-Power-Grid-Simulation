@@ -302,10 +302,13 @@ def simulate_gb(net, scenario, hardened=(), playback=False):
     limits_full = net.ratings*p['rating_scale']
     hours = len(scenario['gust'])
     timestamps = scenario.get('timestamps') or [None]*hours
+    # Step lengths: hourly in the storm; post-storm restoration may use longer calm steps.
+    step = np.broadcast_to(np.asarray(scenario.get('step_hours', scenario.get('dt_hours', 1.)), float), (hours,))
+    elapsed = np.concatenate([[0.], np.cumsum(step)])
     factor = demand_factor(timestamps, float(net.load.sum()))
     stats = dict(transient_faults=0, reclosed_transients=0, lockouts=0, damage=0, overload_trips=0,
                  preventive_mw=0., redispatch_mw=0., island_collapses=0)
-    energy = peak_shed = outage_hours = last_end = 0.; repairs = 0; trips = 0
+    energy = peak_shed = outage_hours = last_end = last_step = 0.; repairs = 0; trips = 0
     frames = []
     probabilities = np.zeros(m)
     status = ['online']*m
@@ -314,11 +317,31 @@ def simulate_gb(net, scenario, hardened=(), playback=False):
         in_service = np.where(damaged, 0, total-out_trip)
         return np.clip(in_service, 0, None)/total
 
+    ever_out = np.zeros(net.n, bool); ever_impaired = np.zeros(net.n, bool); peak = {'out': 0, 'impaired': 0}
+
+    def node_state(solution, demand):
+        """Supply state of each bus from the electrical solution (no separate substation-damage draw)."""
+        produced = np.bincount(solution['labels'], solution['generation'], solution['islands'])
+        energized = produced[solution['labels']] > 1e-6
+        has_load = demand > 1e-6
+        out = has_load & (solution['served'] <= 1e-6)
+        reduced = has_load & ~out & (solution['served'] < demand-1e-6)
+        impaired = out | reduced | (~has_load & ~energized)
+        status = np.where(has_load, np.where(out, 'out_of_supply', np.where(reduced, 'reduced_supply', 'supplied')),
+                          np.where(energized, 'energized', 'deenergized'))
+        return out, reduced, impaired, energized, has_load, status
+
+    def track(solution, demand):
+        out, _, impaired, *_ = node_state(solution, demand)
+        ever_out[:] |= out; ever_impaired[:] |= impaired
+        peak['out'] = max(peak['out'], int(out.sum())); peak['impaired'] = max(peak['impaired'], int(impaired.sum()))
+
     def record(hour, kind, solution, demand, gust, new=()):
         if not playback: return
+        out, reduced, _, energized, has_load, node_status = node_state(solution, demand)
         frac = fraction()
         limits = limits_full*frac
-        frames.append({'hour': hour, 'kind': kind, 'new_trips': [net.branches[i]['id'] for i in new],
+        frames.append({'hour': hour, 'elapsed_hours': float(elapsed[int(hour)]), 'kind': kind, 'new_trips': [net.branches[i]['id'] for i in new],
                        'served_mw': round(float(solution['served'].sum()), 3),
                        'shed_mw': round(float(demand.sum()-solution['served'].sum()), 3),
                        'served_by_bus': solution['served'].round(4).tolist(), 'generation_mw': solution['generation'].round(4).tolist(),
@@ -329,7 +352,12 @@ def simulate_gb(net, scenario, hardened=(), playback=False):
                        'failure_probability': np.asarray(probabilities).round(6).tolist(),
                        'timestamp': timestamps[int(hour)-1] if hour else None,
                        'gust_kmh': np.asarray(gust).round(1).tolist() if gust is not None else [0.]*m,
-                       'demand_mw': round(float(demand.sum()), 1)})
+                       'demand_mw': round(float(demand.sum()), 1), 'node_status': node_status.tolist(),
+                       'nodes_out_of_supply': int(out.sum()), 'nodes_reduced_supply': int(reduced.sum()),
+                       'nodes_deenergized': int((~energized & ~has_load).sum())})
+        if hour and 'hybrid_diagnostics' in scenario:
+            frames[-1]['probability_diagnostics'] = {**scenario['hybrid_diagnostics'][int(hour)-1],
+                                                     'applied_probability': np.asarray(probabilities).tolist()}
 
     zero = np.zeros(m)
     variable, firm, sync = model.availability(zero, timestamps[0])
@@ -343,7 +371,7 @@ def simulate_gb(net, scenario, hardened=(), playback=False):
             if status[i] in ('overload', 'transient'): status[i] = 'online'
         priority = scenario.get('repair_priority', range(m))
         working = np.array([i for i in priority if damaged[i] and gust[i] < p['crew_safe_gust_kmh']][:scenario['crews']], int)
-        repair_remaining[working] -= scenario.get('dt_hours', 1.)
+        repair_remaining[working] -= step[t]
         restored = working[repair_remaining[working] <= 0]
         damaged[restored] = False
         for i in restored: status[i] = 'online'
@@ -415,14 +443,18 @@ def simulate_gb(net, scenario, hardened=(), playback=False):
             raise RuntimeError('Cascade failed to terminate')
         stats['overload_trips'] += len(new_trips)
         stats['island_collapses'] += solution['collapsed']
+        track(solution, demand)
         record(t+1, 'Settled', solution, demand, gust, list(new_damage))
         shed = float(demand.sum()-solution['served'].sum())
         peak_shed = max(peak_shed, shed)
         if shed > 1e-5:
-            outage_hours += 1; last_end = t+1
-        energy += shed
+            outage_hours += step[t]; last_end = elapsed[t+1]; last_step = step[t]
+        energy += shed*step[t]
     final_shed = shed if hours else 0.
     return {'unserved_mwh': energy, 'final_shed_mw': final_shed, 'peak_shed_mw': peak_shed, 'repairs': repairs,
-            'outage_hours': outage_hours, 'recovery_hour': (last_end+1 if outage_hours else 0.) if final_shed <= 1e-5 else None,
+            'outage_hours': outage_hours, 'recovery_hour': (last_end+last_step if outage_hours else 0.) if final_shed <= 1e-5 else None,
             'failed_lines': int(ever_failed.sum()), 'cascade_trips': trips, 'frames': frames,
-            'failed_mask': ever_failed.astype(int).tolist(), **stats}
+            'failed_mask': ever_failed.astype(int).tolist(), **stats,
+            'nodes_ever_out_of_supply': int(ever_out.sum()), 'nodes_ever_impaired': int(ever_impaired.sum()),
+            'peak_nodes_out_of_supply': peak['out'], 'peak_nodes_impaired': peak['impaired'],
+            'node_outage_mask': ever_out.astype(int).tolist()}

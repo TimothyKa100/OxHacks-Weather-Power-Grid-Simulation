@@ -1,0 +1,9 @@
+{
+  "method": "sigmoid_on_margin",
+  "coefficient": 0.9484984206973378,
+  "intercept": -0.10080314573971479,
+  "period_start": "2023-01-17 12:00:00+00:00",
+  "period_end": "2023-11-27 16:00:00+00:00",
+  "rows": 550493,
+  "events": 563
+}

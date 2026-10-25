@@ -191,6 +191,9 @@ def train(rows_path=OUTPUT / "rows.parquet", destination=MODEL_DIR, seed=26):
     baseline = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(), LogisticRegression(max_iter=1000))
     baseline.fit(fit[wind_features], fit.failed_next_hour)
 
+    from .reference import fit as fit_reference
+    reference_model = fit_reference(fit, ca)
+
     test = parts["test"].copy()
     test["probability"] = calibrated(model, calibration, test[features])
     test["uncalibrated_probability"] = model.predict_proba(test[features])[:, 1]
@@ -204,13 +207,14 @@ def train(rows_path=OUTPUT / "rows.parquet", destination=MODEL_DIR, seed=26):
     destination.mkdir(parents=True, exist_ok=True)
     model.save_model(destination / "model.ubj")
     write_json(destination / "calibration.json", calibration)
+    write_json(destination / "reference_model.json", reference_model)
     write_json(destination / "evaluation.json", report)
     plot_reliability({"calibrated XGBoost": report["calibrated_xgboost"],
                       "uncalibrated XGBoost": report["uncalibrated_xgboost"]}, destination / "reliability.png")
     test[["asset_id", "timestamp_utc", "storm_id", "kv", "failed_next_hour", "probability", "uncalibrated_probability"]].to_parquet(
         OUTPUT / "held_out_predictions.parquet", index=False, compression="zstd")
     importance = model.get_booster().get_score(importance_type="gain")
-    manifest = {"model_version": MODEL_VERSION, "created_utc": now(), "features": features, "feature_set": chosen,
+    manifest = {"model_version": destination.name, "created_utc": now(), "features": features, "feature_set": chosen,
                 "feature_sets_complete_for_all_gb_branches": complete, "monotone_increasing": sorted(INCREASING & set(features)),
                 "prediction_unit": "GB simulator branch corridor (5 km) x UTC hour",
                 "target": "P(new weather-caused SSEN overhead-line fault report inside the corridor during [t,t+1h))",
@@ -226,6 +230,7 @@ def train(rows_path=OUTPUT / "rows.parquet", destination=MODEL_DIR, seed=26):
                 "training_rate": history_rate, "candidates": candidates, "chosen_config": {"max_depth": depth, "min_child_weight": child},
                 "calibration": calibration, "feature_importance_gain": importance, "seed": seed,
                 "model_sha256": sha256(destination / "model.ubj"), "calibration_sha256": sha256(destination / "calibration.json"),
+                "reference_sha256": sha256(destination / "reference_model.json"),
                 "dataset_report": json.loads((Path(rows_path).parent / "dataset_report.json").read_text()),
                 "limitations": ["Labels are distribution fault reports located at candidate feeder points, not failed transmission assets",
                                 "Training corridors lie in SSEN licence areas; other GB lines are geographic extrapolation",
@@ -239,14 +244,18 @@ def load_model(directory=MODEL_DIR):
     from xgboost import XGBClassifier
     directory = Path(directory)
     manifest = json.loads((directory / "model_manifest.json").read_text())
-    if sha256(directory / "model.ubj") != manifest["model_sha256"] or sha256(directory / "calibration.json") != manifest["calibration_sha256"]:
+    calibration_bytes=(directory / "calibration.json").read_bytes()
+    import hashlib
+    variants=[calibration_bytes,calibration_bytes.replace(b'\r\n',b'\n'),calibration_bytes.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n')]
+    valid_calibration=manifest['calibration_sha256'] in [hashlib.sha256(b).hexdigest() for b in variants]
+    if sha256(directory / "model.ubj") != manifest["model_sha256"] or not valid_calibration:
         raise ValueError("Model or calibration checksum mismatch")
     model = XGBClassifier()
     model.load_model(directory / "model.ubj")
     return model, json.loads((directory / "calibration.json").read_text()), manifest
 
 
-def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=None, name=None):
+def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=None, name=None, paired=False):
     """Weather/ML JSON for POST /api/storm-plan: one calibrated probability per branch and hour."""
     from .gb_weather import fetch_window, load
     model, calibration, manifest = load_model(directory)
@@ -255,6 +264,14 @@ def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=No
         raise ValueError("The importer accepts 1-72 hourly records")
     if start < pd.Timestamp(manifest["training_cutoff"]):
         raise ValueError("Replay must start after the model's training cutoff")
+    reference=None
+    if paired:
+        from .reference import predict as reference_predict
+        ref_path=Path(directory)/'reference_model.json'
+        if not ref_path.exists() or not manifest.get('reference_sha256'):
+            raise ValueError('This model has no fitted weather-aware reference. Retrain to a new version; no constant-rate substitute is permitted.')
+        if sha256(ref_path)!=manifest['reference_sha256']: raise ValueError('Reference checksum mismatch')
+        reference=json.loads(ref_path.read_text())
     lines = load_network()
     order = [line["id"] for line in lines]
     if branch_ids is not None and list(branch_ids) != order:
@@ -277,7 +294,7 @@ def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=No
         # Only overhead routes have a corridor exposure; cables, transformers and inferred links get none.
         columns[line["id"]] = (frame, risk if line["kind"] == "line" else np.zeros(len(risk)))
     profile = {
-        "source": (f"GridGuard {MODEL_VERSION}: calibrated XGBoost hourly outage risk in each line's 5 km corridor, "
+        "source": (f"GridGuard {manifest['model_version']}: calibrated XGBoost hourly outage risk in each line's 5 km corridor, "
                    "trained on SSEN NaFIRS weather-caused overhead-line faults with ERA5 (Open-Meteo) route weather. "
                    "Area-level proxy, not a verified transmission-line failure probability."),
         "mode": "historical_replay",
@@ -293,6 +310,20 @@ def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=No
                    "rain_mm_h": [round(float(columns[i][0].rain_1h_mm.iloc[h]), 2) for i in order],
                    "failure_probability": [round(float(columns[i][1][h]), 6) for i in order]}
                   for h, t in enumerate(intervals)]}
+    if paired:
+        from backend.hybrid import validate_pair
+        profile['prediction_unit']='paired_risk_modifier'
+        profile['prediction'].update(reference_model_version=manifest['model_version']+'-weather-reference',
+                                     target='corridor_outage',evidence_status='observed_labels')
+        reference_columns={i:reference_predict(columns[i][0],reference) for i in order}
+        profile['hours']=[{'timestamp':t.isoformat(),
+            'full_probability':[float(columns[i][1][h]) for i in order],
+            'reference_probability':[float(reference_columns[i][h]) for i in order]}
+            for h,t in enumerate(intervals)]
+        validate_pair(profile,order)
+        destination=Path(destination); destination.parent.mkdir(parents=True,exist_ok=True)
+        write_json(destination,profile)
+        return profile
     from backend.weather import validate_weather
     # Same hourly contract as the importer; the area-risk marker keeps it out of simulations.
     validate_weather({**profile, "prediction_unit": None}, len(order))

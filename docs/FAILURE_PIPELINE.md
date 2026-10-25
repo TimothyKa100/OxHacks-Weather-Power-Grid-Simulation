@@ -1,3 +1,5 @@
+> Current specification: [MODEL_SPEC.md](MODEL_SPEC.md). This document retains earlier model/source details. Raw corridor exports are still display-only; the new explicit paired hybrid mode can affect simulated line failures. No unpublished transmission training results are claimed.
+
 > Ported from the `dataRefininf` branch. This gated feeder pipeline still trains nothing without verified labels. The trained model in this workspace is the separate GB line-corridor model in [GB_LINE_MODEL.md](GB_LINE_MODEL.md).
 
 The implemented workflow is an hourly SSEN feeder research pipeline. It assembles route weather, asset, woodland and terrain features without turning unverified incidents into failure labels. The separate IEEE simulator accepts explicitly identified branch probabilities. A feeder prediction cannot be imported as a physical GB line failure.

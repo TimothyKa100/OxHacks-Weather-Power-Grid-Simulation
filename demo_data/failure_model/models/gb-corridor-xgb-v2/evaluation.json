@@ -1,0 +1,247 @@
+{
+  "note": "Test period reused as a benchmark: v1 test results informed v2 design.",
+  "benchmark": {
+    "v1_saved": {
+      "log_loss": 0.006500537911372414,
+      "brier_score": 0.0010411754590238587,
+      "average_precision": 0.07629390669518957,
+      "expected_events": 1892.2704074268986,
+      "events": 2008,
+      "storm_expected": 545.0541072587948,
+      "storm_observed": 950,
+      "quiet_expected": 1347.2163001681038,
+      "quiet_observed": 1058
+    },
+    "sigmoid": {
+      "events": 2008,
+      "expected_events": 1891.505679453353,
+      "brier_score": 0.0010407153014310153,
+      "log_loss": 0.006501075330054847,
+      "average_precision": 0.07679936161042293,
+      "storm_observed": 950,
+      "storm_expected": 550.4869433965027,
+      "quiet_observed": 1058,
+      "quiet_expected": 1341.0187360568502,
+      "inspection_recall_top10": 0.4452191235059761,
+      "reliability": [
+        {
+          "lower": 0,
+          "upper": 0.0001,
+          "rows": 388627,
+          "mean_probability": 5.485875049986232e-05,
+          "observed_frequency": 4.8890066825001866e-05
+        },
+        {
+          "lower": 0.0001,
+          "upper": 0.0003,
+          "rows": 516330,
+          "mean_probability": 0.00018655739738516694,
+          "observed_frequency": 0.00017237038328200957
+        },
+        {
+          "lower": 0.0003,
+          "upper": 0.001,
+          "rows": 563590,
+          "mean_probability": 0.000561800379660661,
+          "observed_frequency": 0.0005447222271509431
+        },
+        {
+          "lower": 0.001,
+          "upper": 0.003,
+          "rows": 282357,
+          "mean_probability": 0.0016699121141034075,
+          "observed_frequency": 0.001540602853833976
+        },
+        {
+          "lower": 0.003,
+          "upper": 0.01,
+          "rows": 76461,
+          "mean_probability": 0.004831764681160464,
+          "observed_frequency": 0.004734439779757
+        },
+        {
+          "lower": 0.01,
+          "upper": 0.03,
+          "rows": 12475,
+          "mean_probability": 0.016071324035343844,
+          "observed_frequency": 0.019398797595190382
+        },
+        {
+          "lower": 0.03,
+          "upper": 0.1,
+          "rows": 4351,
+          "mean_probability": 0.05168036067488932,
+          "observed_frequency": 0.07078832452309813
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.3,
+          "rows": 917,
+          "mean_probability": 0.1604105615242864,
+          "observed_frequency": 0.2257360959651036
+        },
+        {
+          "lower": 0.3,
+          "upper": 1.0,
+          "rows": 113,
+          "mean_probability": 0.3879238514581715,
+          "observed_frequency": 0.34513274336283184
+        }
+      ]
+    },
+    "seasonal_logistic": {
+      "events": 2008,
+      "expected_events": 2323.700065049789,
+      "brier_score": 0.001044300358471739,
+      "log_loss": 0.006472802562736187,
+      "average_precision": 0.07812710672139501,
+      "storm_observed": 950,
+      "storm_expected": 929.498193629639,
+      "quiet_observed": 1058,
+      "quiet_expected": 1394.2018714201502,
+      "inspection_recall_top10": 0.4457171314741036,
+      "reliability": [
+        {
+          "lower": 0,
+          "upper": 0.0001,
+          "rows": 529270,
+          "mean_probability": 4.954558638250152e-05,
+          "observed_frequency": 5.2903055151435e-05
+        },
+        {
+          "lower": 0.0001,
+          "upper": 0.0003,
+          "rows": 501108,
+          "mean_probability": 0.00018289463495447825,
+          "observed_frequency": 0.00022749586915395484
+        },
+        {
+          "lower": 0.0003,
+          "upper": 0.001,
+          "rows": 482126,
+          "mean_probability": 0.0005596886924314274,
+          "observed_frequency": 0.0006097990981610616
+        },
+        {
+          "lower": 0.001,
+          "upper": 0.003,
+          "rows": 229250,
+          "mean_probability": 0.001666512435458978,
+          "observed_frequency": 0.0015921483097055616
+        },
+        {
+          "lower": 0.003,
+          "upper": 0.01,
+          "rows": 76786,
+          "mean_probability": 0.005039390171647211,
+          "observed_frequency": 0.003880915791941239
+        },
+        {
+          "lower": 0.01,
+          "upper": 0.03,
+          "rows": 17656,
+          "mean_probability": 0.01627550915751024,
+          "observed_frequency": 0.01325328500226552
+        },
+        {
+          "lower": 0.03,
+          "upper": 0.1,
+          "rows": 6415,
+          "mean_probability": 0.05340517013951896,
+          "observed_frequency": 0.04255650818394388
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.3,
+          "rows": 2183,
+          "mean_probability": 0.1606509703694625,
+          "observed_frequency": 0.12780577187356848
+        },
+        {
+          "lower": 0.3,
+          "upper": 1.0,
+          "rows": 427,
+          "mean_probability": 0.4363663308888389,
+          "observed_frequency": 0.28805620608899296
+        }
+      ]
+    },
+    "reduced_sigmoid": {
+      "events": 2008,
+      "expected_events": 2015.007833804931,
+      "brier_score": 0.0010413199014290377,
+      "log_loss": 0.006611099985346776,
+      "average_precision": 0.0731508315270907,
+      "storm_observed": 950,
+      "storm_expected": 600.5513159065481,
+      "quiet_observed": 1058,
+      "quiet_expected": 1414.456517898383,
+      "inspection_recall_top10": 0.43326693227091634,
+      "reliability": [
+        {
+          "lower": 0,
+          "upper": 0.0001,
+          "rows": 335492,
+          "mean_probability": 5.076486062002071e-05,
+          "observed_frequency": 5.0671849105194755e-05
+        },
+        {
+          "lower": 0.0001,
+          "upper": 0.0003,
+          "rows": 448187,
+          "mean_probability": 0.00019055528256383094,
+          "observed_frequency": 0.00020750267187580185
+        },
+        {
+          "lower": 0.0003,
+          "upper": 0.001,
+          "rows": 604134,
+          "mean_probability": 0.0005761640376327719,
+          "observed_frequency": 0.0005396153833421062
+        },
+        {
+          "lower": 0.001,
+          "upper": 0.003,
+          "rows": 369616,
+          "mean_probability": 0.001642502397424079,
+          "observed_frequency": 0.001231007315700619
+        },
+        {
+          "lower": 0.003,
+          "upper": 0.01,
+          "rows": 69670,
+          "mean_probability": 0.004669858920229988,
+          "observed_frequency": 0.004377780967417827
+        },
+        {
+          "lower": 0.01,
+          "upper": 0.03,
+          "rows": 12597,
+          "mean_probability": 0.016826335044830734,
+          "observed_frequency": 0.019925379058505995
+        },
+        {
+          "lower": 0.03,
+          "upper": 0.1,
+          "rows": 4395,
+          "mean_probability": 0.051422849406183545,
+          "observed_frequency": 0.07235494880546076
+        },
+        {
+          "lower": 0.1,
+          "upper": 0.3,
+          "rows": 1021,
+          "mean_probability": 0.15155278146353232,
+          "observed_frequency": 0.20470127326150833
+        },
+        {
+          "lower": 0.3,
+          "upper": 1.0,
+          "rows": 109,
+          "mean_probability": 0.36098670986448284,
+          "observed_frequency": 0.3119266055045872
+        }
+      ]
+    }
+  }
+}

@@ -1,3 +1,5 @@
+> Current specification: [MODEL_SPEC.md](MODEL_SPEC.md). This document retains earlier model/source details. Raw corridor exports are still display-only; the new explicit paired hybrid mode can affect simulated line failures. No unpublished transmission training results are claimed.
+
 # GB line-corridor outage-risk model (XGBoost)
 
 This model feeds hourly probabilities for every GB map branch into the existing
@@ -175,9 +177,16 @@ reliability plot, are in `data/failure_model/models/gb-corridor-xgb-v1/`.
 
   The deployed model therefore uses the spec features without vegetation.
 
-## On the map: a separate corridor-risk layer
+## On the map: the ML power-cut forecast and corridor-risk layers
 
-Exports are shown as their own layer, **not** fed into the line-failure simulation. Choose a
+Every storm-plan run includes `power_cut_forecast` (`backend/forecast.py`): the v2 probability per
+overhead route and hour on the run's own network, and, for historical storms, the comparison with
+reported cuts. The map picks **ML power-cut forecast (this run)** after a run. The halos follow the
+playback hour during the storm and show the storm total afterwards. Hovering a line shows its
+storm chance, plus its expected and reported cut-hours inside the feed's coverage. The panel
+charts forecast and reported corridor-hours per hour on the same scale.
+
+Archived exports are also shown as their own layer, **not** fed into the line-failure simulation. Choose a
 layer under **Corridor outage risk** below the map. Exports in `data/failure_model/exports/`
 are listed via `GET /api/corridor-risk`; a gb-export file loaded with the weather/ML importer
 also becomes this layer. Purple halos under each route show risk on a log scale from 0.01% to 30%.
@@ -227,6 +236,77 @@ grossly overstates transmission damage**, as the brief warned. Show it alongside
 line model, or map it to line failures with a separately justified, labelled conversion, before
 using it for decisions.
 
+## Model v2 (`gb-corridor-xgb-v2`): fine-tuned for the hybrid
+
+`failure_model/gb_v2.py` (`python -m failure_model gb-train-v2`) retrains on the same rows,
+target, chronological split and 25 h purges as v1. Its job is to feed the bounded hybrid
+(`backend/hybrid.py`), which turns it into the line-failure probability the cascade engine draws.
+
+**Asset identity.** The rows were built on the 367-branch network at commit `0bb65f8`; the
+current network has 673 branches and reuses `L` IDs for different routes (only 27 of the 73
+training IDs still lie on a training route). `training_routes.json` stores the training routes
+as lon/lat geometry. At inference an overhead branch is in the training domain when at least
+80% of its route points lie within 2 km of a training route of the same voltage
+(`backend/ml_risk.training_domain`): 84 of 436 overhead routes on the current GB network.
+The ML signal applies only to overhead routes; cables, transformers and inferred links keep
+their engineering hazard.
+
+**Features.** The comparison added month sine/cosine, the previous-6 h maximum route gust
+and the previous-6 h accumulated gust excess above 80 km/h. Previous-24 h rain is kept. No
+age, condition or vegetation data were guessed.
+
+**Small comparison** (learning rate 0.05, `reg_lambda` 5, up to 800 trees, early stopping 30,
+no class balancing; tuning period 2022-03-06 to 2023-01-16, 414 events):
+
+| Features | Depth | Min child weight | Trees | Tune log loss | Top-10 recall | Storm expected / observed | Quiet expected / observed |
+|---|---|---|---|---|---|---|---|
+| v1 | 3 | 20 | 529 | 0.005032 | 0.536 | 14.8 / 24 | 348 / 390 |
+| v1 | 3 | 50 | 503 | 0.005036 | 0.527 | 14.9 / 24 | 353 / 390 |
+| **v1** | **5** | **20** | **255** | **0.005026** | 0.539 | 14.8 / 24 | 349 / 390 |
+| v1 | 5 | 50 | 316 | 0.005029 | 0.517 | 14.7 / 24 | 351 / 390 |
+| expanded | 3 | 20 | 344 | 0.005100 | 0.553 | 14.6 / 24 | 338 / 390 |
+| expanded | 3 | 50 | 388 | 0.005095 | 0.563 | 15.7 / 24 | 341 / 390 |
+| expanded | 5 | 20 | 131 | 0.005101 | 0.548 | 15.0 / 24 | 341 / 390 |
+| expanded | 5 | 50 | 193 | 0.005105 | 0.556 | 15.7 / 24 | 334 / 390 |
+| reduced | 3 | 20 | 470 | 0.005145 | 0.512 | 13.5 / 24 | 327 / 390 |
+| **reduced** | **5** | **50** | **368** | **0.005141** | 0.522 | 13.7 / 24 | 322 / 390 |
+
+Selection was by tuning log loss, so the full model keeps v1's twelve features (depth 5).
+The seasonal and sustained-wind features ranked storm corridors slightly better (top-10
+recall 0.55-0.56 against 0.52-0.54) but had worse log loss, so they were not adopted. The
+tuning period holds only 24 storm-hour events, too few to decide on recall alone.
+
+**Calibration** was fitted on the separate calibration period (2023-01-16 to 2023-11-28, 563
+events). A small L2-regularised logistic calibrator on (margin, log(1+max(gust-40, 0)),
+month sine, month cosine) was compared with sigmoid on the margin alone. The results below are
+on the old test period. That period informed v2's design, so it is a **benchmark, not an
+untouched test**:
+
+| Model | Log loss | Brier | Average precision | Storm expected / observed | Quiet expected / observed |
+|---|---|---|---|---|---|
+| v1 (saved) | 0.006501 | 0.001041 | 0.0763 | 545 / 950 | 1347 / 1058 |
+| v2 full + sigmoid | 0.006501 | 0.001041 | 0.0768 | 550 / 950 | 1341 / 1058 |
+| **v2 full + seasonal calibrator** | **0.006473** | 0.001044 | **0.0781** | **929 / 950** | 1394 / 1058 |
+| v2 reduced + sigmoid | 0.006611 | 0.001041 | 0.0732 | 601 / 950 | 1414 / 1058 |
+
+The seasonal calibrator removes most of v1's storm under-prediction (545 to 929 of 950
+expected) at the cost of over-predicting quiet hours (1394 against 1058). This matters for the
+hybrid: storm hours are the hours where it changes which lines break.
+
+**Inference** (`backend/ml_risk.py`):
+- With complete ERA5-style route inputs, such as an archived replay from
+  `python -m failure_model gb-export --v2 ...`, the full model and seasonal calibrator are used.
+- Synthetic and UKV demos only have route gusts. They use the reduced model (gust max, p95,
+  previous-3 h max, plus five static features) rather than missing-value paths.
+- Hours without three hours of gust history are engineering-only.
+- Archived exports are reused only when their `model_version` matches.
+
+The result goes through the unchanged bounded hybrid. β = 0.5 and the multiplier is bounded to
+0.5–2, so the ML can at most halve or double a line's engineering hazard. Each hour's expected
+line failures are preserved and only redistributed between lines. A line's
+damage draw in the cascade engine uses this tilted probability, so the model output decides
+which lines break.
+
 ## Limitations
 
 - Labels are distribution fault reports at candidate feeder points. The probabilities describe
@@ -247,6 +327,9 @@ using it for decisions.
 .venv/bin/python -m pip install -r requirements-model.txt
 .venv/bin/python -m failure_model gb-dataset
 .venv/bin/python -m failure_model gb-train
+.venv/bin/python -m failure_model gb-train-v2
+.venv/bin/python -m failure_model gb-export --v2 --start 2024-12-06T12:00Z --hours 60     --destination data/failure_model/exports/darragh-2024_gb-corridor-xgb-v2.json --name "Storm Darragh (ERA5 replay)"
+.venv/bin/python scripts/compare_hybrid_decisions.py
 .venv/bin/python scripts/audit_weather_sources.py
 .venv/bin/python -m pytest -q tests/test_gb_line_model.py tests/test_failure_pipeline.py
 ```

@@ -13,7 +13,8 @@ STORM_PRESETS = {
 }
 
 def load_profile():
-    return json.loads((Path(__file__).resolve().parents[1]/"data/sample_weather.json").read_text())
+    from .paths import DATA
+    return json.loads((DATA/"sample_weather.json").read_text())
 
 def fragility(gust_kmh, rain_mm_h, exposure, hardened=False):
     """Illustrative logistic wind curve, modest rain multiplier; not calibrated."""
@@ -57,7 +58,7 @@ def validate_weather(profile, branches):
     supplied_predictions = [isinstance(row, dict) and 'failure_probability' in row for row in hours]
     prediction_dates = {}
     engineering = profile.get('engineering_model')
-    if engineering is not None and (not isinstance(engineering,dict) or engineering.get('name')!='route-pylon-v1'):
+    if engineering is not None and (not isinstance(engineering,dict) or engineering.get('name') not in ('route-pylon-v1','hybrid-hazard-v1')):
         raise ValueError('Unknown engineering probability model')
     if any(supplied_predictions):
         if not all(supplied_predictions): raise ValueError('Supply failure_probability for every hour or none')
@@ -115,7 +116,11 @@ def validate_weather(profile, branches):
     return profile
 
 
-def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, crews=2, storm_type='single_peak'):
+CALM_GUST_KMH = 20.  # post-storm restoration hours: below the crews' safe-work gust, no new damage
+RECOVERY_STEP_H = 4.  # GB restoration step: repairs, energy and outage hours scale by the step length
+
+
+def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, crews=2, storm_type='single_peak', recovery_hours=0):
     from datetime import datetime, timezone, timedelta
     if storm_type not in STORM_PRESETS:
         raise ValueError('Unknown storm preset')
@@ -146,11 +151,27 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
         rain = np.broadcast_to((20*envelope)[:, None], gust.shape).copy()
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         timestamps = [(start+timedelta(hours=int(t))).isoformat() for t in range(hours)]
+    storm_hours = len(gust)
+    steps = np.ones(storm_hours)
+    if recovery_hours:
+        # Restoration after the storm: calm, dry steps with no weather damage, so crews keep repairing.
+        # The GB engine takes longer calm steps (only repairs change); others stay hourly.
+        from datetime import datetime, timedelta
+        size = RECOVERY_STEP_H if network.geographic else 1.
+        tail = np.full(int(np.ceil(recovery_hours/size)), size); tail[-1] = recovery_hours-size*(len(tail)-1)
+        last = datetime.fromisoformat(str(timestamps[-1]).replace('Z', '+00:00'))
+        gust = np.vstack([gust, np.full((len(tail), network.m), CALM_GUST_KMH)])
+        rain = np.vstack([rain, np.zeros((len(tail), network.m))])
+        timestamps = list(timestamps)+[(last+timedelta(hours=float(h))).isoformat() for h in np.cumsum(tail)]
+        steps = np.concatenate([steps, tail])
+        hours = len(steps)
     # Historical replay keeps the supplied weather fixed. Uncertainty is in failures/repairs.
     draws = rng.random((count, hours, network.m))
     repair = np.clip(rng.lognormal(np.log(8), .4, (count, hours, network.m)), 2, 36)
     result = [dict(gust=gust, rain=rain, draws=draws[i], repair_hours=repair[i],
                    timestamps=timestamps, dt_hours=1., crews=crews, recovery=True) for i in range(count)]
+    if recovery_hours and network.geographic:
+        for scenario in result: scenario['step_hours'] = steps
     if network.geographic:
         # GB engine (grid_ops): days-long damage repairs, per-circuit transient faults and
         # auto-reclose outcomes, and a shared per-corridor, per-hour damage factor.
@@ -163,11 +184,15 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
             scenario['transient_draws'] = rng.random((hours, network.m, width))
             scenario['reclose_draws'] = rng.random((hours, network.m, width))
             scenario['common_cause'] = rng.lognormal(-sigma**2/2, sigma, (hours, model.groups)) if sigma > 0 else np.ones((hours, model.groups))
+    calm = np.zeros((hours-storm_hours, network.m))
     if weather is not None and 'failure_probability' in rows[0]:
-        probabilities = np.array([row['failure_probability'] for row in rows])
-        for scenario in result: scenario['failure_probability'] = probabilities
+        probabilities = np.vstack([np.array([row['failure_probability'] for row in rows]), calm])
+        for scenario in result:
+            scenario['failure_probability'] = probabilities
+            if 'hybrid_diagnostics' in rows[0]:
+                scenario['hybrid_diagnostics']=[row['hybrid_diagnostics'] for row in rows]+[{'phase':'restoration'}]*(hours-storm_hours)
         if 'failure_probability_hardened' in rows[0]:
-            hardened = np.array([row['failure_probability_hardened'] for row in rows])
+            hardened = np.vstack([np.array([row['failure_probability_hardened'] for row in rows]), calm])
             for scenario in result: scenario['failure_probability_hardened'] = hardened
     return result
 

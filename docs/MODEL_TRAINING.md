@@ -1,3 +1,5 @@
+> Current specification: [MODEL_SPEC.md](MODEL_SPEC.md). This document retains earlier model/source details. Raw corridor exports are still display-only; the new explicit paired hybrid mode can affect simulated line failures. No unpublished transmission training results are claimed.
+
 > Ported from the `dataRefininf` branch. This gated feeder pipeline still trains nothing without verified labels. The trained model in this workspace is the separate GB line-corridor model in [GB_LINE_MODEL.md](GB_LINE_MODEL.md).
 
 # Predicting network failures at each timestep

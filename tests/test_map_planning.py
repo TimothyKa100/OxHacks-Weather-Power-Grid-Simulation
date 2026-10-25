@@ -15,7 +15,7 @@ def fixture_weather():
 
 def test_map_plan_reruns_recommendations_on_same_gb_storm():
     client=app.test_client()
-    first=client.post('/api/storm-plan',json=dict(hours=6,samples=16,budget=2,peak_gust=190,seed=7))
+    first=client.post('/api/storm-plan',json=dict(hours=6,samples=16,budget=2,peak_gust=190,seed=7,recovery_hours=0,failure_mode='engineering'))
     assert first.status_code==200
     first=first.json
     assert first['plan']['config']['network']=='gb'
@@ -40,7 +40,7 @@ def test_map_plan_reruns_recommendations_on_same_gb_storm():
 
 def test_imported_weather_uses_same_engine_and_has_no_fake_storm_path():
     client=app.test_client()
-    request=dict(scenario='imported',weather=fixture_weather(),samples=16,budget=0)
+    request=dict(scenario='imported',weather=fixture_weather(),samples=16,budget=0,recovery_hours=0)
     first=client.post('/api/storm-plan',json=request)
     assert first.status_code==200
     first=first.json

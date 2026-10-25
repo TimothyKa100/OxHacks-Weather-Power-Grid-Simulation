@@ -1,0 +1,206 @@
+{
+  "model_version": "gb-corridor-xgb-v2",
+  "created_utc": "2026-10-25T11:42:12.673619+00:00",
+  "chosen_feature_set": "v1_features",
+  "features": [
+    "gust_max_kmh",
+    "gust_p95_kmh",
+    "gust_prev_3h_max_kmh",
+    "crosswind_max_kmh",
+    "rain_1h_mm",
+    "rain_prev_24h_mm",
+    "temperature_c",
+    "length_km",
+    "ele_mean_m",
+    "ele_max_m",
+    "kv",
+    "circuits"
+  ],
+  "reduced_features": [
+    "gust_max_kmh",
+    "gust_p95_kmh",
+    "gust_prev_3h_max_kmh",
+    "length_km",
+    "ele_mean_m",
+    "ele_max_m",
+    "kv",
+    "circuits"
+  ],
+  "monotone_increasing": [
+    "crosswind_max_kmh",
+    "gust_excess80_prev_6h_kmh_h",
+    "gust_max_kmh",
+    "gust_p95_kmh",
+    "gust_prev_3h_max_kmh",
+    "gust_prev_6h_max_kmh"
+  ],
+  "candidates": [
+    {
+      "feature_set": "v1_features",
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "trees": 529,
+      "tune_log_loss": 0.005031535895230372,
+      "tune_inspection_recall_top10": 0.5362318840579711,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.83305549621582,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 347.76666259765625
+    },
+    {
+      "feature_set": "v1_features",
+      "max_depth": 3,
+      "min_child_weight": 50,
+      "trees": 503,
+      "tune_log_loss": 0.00503641762080963,
+      "tune_inspection_recall_top10": 0.5265700483091788,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.878265380859375,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 353.1551818847656
+    },
+    {
+      "feature_set": "v1_features",
+      "max_depth": 5,
+      "min_child_weight": 20,
+      "trees": 255,
+      "tune_log_loss": 0.005026053127390387,
+      "tune_inspection_recall_top10": 0.538647342995169,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.758008003234863,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 349.0942077636719
+    },
+    {
+      "feature_set": "v1_features",
+      "max_depth": 5,
+      "min_child_weight": 50,
+      "trees": 316,
+      "tune_log_loss": 0.005028605938462329,
+      "tune_inspection_recall_top10": 0.5169082125603864,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.691143989562988,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 351.38836669921875
+    },
+    {
+      "feature_set": "expanded",
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "trees": 344,
+      "tune_log_loss": 0.0051003284954896705,
+      "tune_inspection_recall_top10": 0.5531400966183575,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.564809799194336,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 338.4654235839844
+    },
+    {
+      "feature_set": "expanded",
+      "max_depth": 3,
+      "min_child_weight": 50,
+      "trees": 388,
+      "tune_log_loss": 0.005094934682972127,
+      "tune_inspection_recall_top10": 0.5628019323671497,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 15.660219192504883,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 341.20428466796875
+    },
+    {
+      "feature_set": "expanded",
+      "max_depth": 5,
+      "min_child_weight": 20,
+      "trees": 131,
+      "tune_log_loss": 0.005101005141900973,
+      "tune_inspection_recall_top10": 0.5483091787439613,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 14.97366714477539,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 341.1591491699219
+    },
+    {
+      "feature_set": "expanded",
+      "max_depth": 5,
+      "min_child_weight": 50,
+      "trees": 193,
+      "tune_log_loss": 0.0051054424616225865,
+      "tune_inspection_recall_top10": 0.5555555555555556,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 15.696739196777344,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 333.6437072753906
+    },
+    {
+      "feature_set": "reduced",
+      "max_depth": 3,
+      "min_child_weight": 20,
+      "trees": 470,
+      "tune_log_loss": 0.005145190236129391,
+      "tune_inspection_recall_top10": 0.5120772946859904,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 13.523427963256836,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 327.2805480957031
+    },
+    {
+      "feature_set": "reduced",
+      "max_depth": 5,
+      "min_child_weight": 50,
+      "trees": 368,
+      "tune_log_loss": 0.005140711423996185,
+      "tune_inspection_recall_top10": 0.5217391304347826,
+      "tune_storm_observed": 24,
+      "tune_storm_expected": 13.694557189941406,
+      "tune_quiet_observed": 390,
+      "tune_quiet_expected": 322.3497314453125
+    }
+  ],
+  "chosen_full": {
+    "feature_set": "v1_features",
+    "max_depth": 5,
+    "min_child_weight": 20,
+    "trees": 255,
+    "tune_log_loss": 0.005026053127390387,
+    "tune_inspection_recall_top10": 0.538647342995169,
+    "tune_storm_observed": 24,
+    "tune_storm_expected": 14.758008003234863,
+    "tune_quiet_observed": 390,
+    "tune_quiet_expected": 349.0942077636719
+  },
+  "chosen_reduced": {
+    "feature_set": "reduced",
+    "max_depth": 5,
+    "min_child_weight": 50,
+    "trees": 368,
+    "tune_log_loss": 0.005140711423996185,
+    "tune_inspection_recall_top10": 0.5217391304347826,
+    "tune_storm_observed": 24,
+    "tune_storm_expected": 13.694557189941406,
+    "tune_quiet_observed": 390,
+    "tune_quiet_expected": 322.3497314453125
+  },
+  "calibrator": "seasonal_logistic",
+  "split_boundaries_utc": {
+    "fit": "2022-03-06T04:00:00+00:00",
+    "tune": "2023-01-16T11:00:00+00:00",
+    "calibrate": "2023-11-28T18:00:00+00:00"
+  },
+  "training_cutoff": "2023-11-28T18:00:00+00:00",
+  "target": "P(new weather-caused SSEN overhead-line fault report inside the 5 km corridor during [t,t+1h))",
+  "interpretation": "Area-level corridor outage risk; relative signal for the engineering-led hybrid, not transmission failure probability",
+  "identity": {
+    "trained_on_network_commit": "0bb65f8",
+    "match": "route geometry (training_routes.json), overhead routes only"
+  },
+  "gust_convention": "raw ERA5 10 m gust (preceding-hour maximum); no terrain adjustment",
+  "model_full_sha256": "33947119f3fdd2361582d44ab7cfa742365fb68e91807adaa879143b7134d747",
+  "model_reduced_sha256": "5de58507626496833b3bfa64c242be40453692dcd88b3ffaa70a3fc0f2b1a549",
+  "calibration_sha256": "fcc2ce728deecf9ddc8b3ca11f130778f6dad13536a8f80a3bb4fb7468f050a7",
+  "training_routes_sha256": "b5244b340ed49fb3578faaa2846cbaf49185666d33dae6644f66310a90cd2f1e",
+  "limitations": [
+    "Labels are distribution fault reports near a route, not transmission outages",
+    "Absolute transmission failure rates cannot be learned from these labels",
+    "Training corridors are SSEN areas (65 of 73 in northern Scotland)"
+  ]
+}

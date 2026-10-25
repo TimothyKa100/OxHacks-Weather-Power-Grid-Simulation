@@ -37,6 +37,7 @@ def main():
     predict.add_argument("--destination", type=Path, required=True)
     commands.add_parser("gb-dataset", help="GB line-corridor rows from SSEN labels and ERA5 route weather")
     gb_train = commands.add_parser("gb-train", help="XGBoost on the first 75% of hours; test on the last 25%")
+    commands.add_parser("gb-train-v2", help="Seasonal/sustained-wind corridor model, calibrated, with a reduced fallback")
     gb_train.add_argument("--model-dir", type=Path)
     gb_export = commands.add_parser("gb-export", help="Weather/ML JSON for POST /api/storm-plan")
     gb_export.add_argument("--start", required=True, help="First UTC hour, e.g. 2024-12-06T12:00Z")
@@ -45,6 +46,8 @@ def main():
     gb_export.add_argument("--model-dir", type=Path)
     gb_export.add_argument("--api", help="Running app URL; branch order is read from /api/network?name=gb")
     gb_export.add_argument("--name")
+    gb_export.add_argument("--paired", action="store_true", help="Export a full/reference pair for explicit experimental hybrid mode")
+    gb_export.add_argument("--v2", action="store_true", help="Archive gb-corridor-xgb-v2 predictions (overhead routes only)")
     args = parser.parse_args()
     output = args.output
     weather = ROOT / "data/processed/weather"
@@ -79,6 +82,12 @@ def main():
     elif args.command == "gb-dataset":
         from .gb_lines import build_dataset
         result = {k: v for k, v in build_dataset().items() if k != "weather_cells"}
+    elif args.command == "gb-train-v2":
+        from .gb_v2 import train as train_v2
+        manifest, benchmark = train_v2()
+        result = {"model_version": manifest["model_version"], "feature_set": manifest["chosen_feature_set"],
+                  "calibrator": manifest["calibrator"], "benchmark": {k: {m: v.get(m) for m in ("log_loss", "storm_expected", "storm_observed", "quiet_expected", "quiet_observed")}
+                                                                       for k, v in benchmark.items()}}
     elif args.command == "gb-train":
         from .gb_model import MODEL_DIR, train as train_gb
         manifest, report = train_gb(destination=args.model_dir or MODEL_DIR)
@@ -94,8 +103,12 @@ def main():
             import requests
             order = [b["id"] for b in requests.get(args.api.rstrip("/") + "/api/network", params={"name": "gb"},
                                                    timeout=30).json()["branches"]]
-        profile = export_profile(args.start, args.hours, args.destination, args.model_dir or MODEL_DIR, order, args.name)
-        p = [x for h in profile["hours"] for x in h["failure_probability"]]
+        if args.v2:
+            from .gb_v2 import MODEL_DIR as V2_DIR, export_profile as export_v2
+            profile = export_v2(args.start, args.hours, args.destination, args.model_dir or V2_DIR, args.name)
+        else:
+            profile = export_profile(args.start, args.hours, args.destination, args.model_dir or MODEL_DIR, order, args.name, args.paired)
+        p = [x for h in profile["hours"] for x in h["full_probability" if args.paired else "failure_probability"] if x is not None]
         result = {"destination": str(args.destination), "hours": len(profile["hours"]), "branches": len(profile["branch_ids"]),
                   "mean_probability": sum(p) / len(p), "max_probability": max(p)}
     elif args.command == "train":

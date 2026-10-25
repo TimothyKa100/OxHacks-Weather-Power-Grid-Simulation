@@ -41,3 +41,17 @@ test('legacy sample remains viewable and has no fabricated decision plan',()=>{
   assert.equal(portfolioRun(sample,'custom'),sample);
   assert.throws(()=>sameStormRequest(sample,[],{}));
 });
+
+test('cascade rounds stay as separate frames inside their hour',()=>{
+  const run=fixture();
+  const round=(hour,status,ids)=>({...f(hour,status,10),kind:'Cascade trip',new_trips:ids});
+  run.plan.portfolios.optimized.playback.frames=[f(0,'online',10),round(1,'overload',['L001']),round(1,'overload',['L002']),{...f(1,'overload',0),kind:'Settled'},f(2,'online',10)];
+  const chosen=portfolioRun(run,'optimized');
+  assert.equal(chosen.frames.length,5);
+  assert.deepEqual(chosen.frames.slice(1,4).map(x=>x.cascade.round),[1,2,3]);
+  assert.equal(chosen.frames[3].cascade.settled,true);
+  const timeline=buildTimeline(chosen);
+  assert.equal(timeline.cascades.length,1);
+  assert.deepEqual(timeline.cascades[0].tripped,['L001','L002']);
+  assert.ok(timeline.times[1]<timeline.times[2]&&timeline.times[2]<timeline.times[3]&&timeline.times[3]<timeline.times[4]);
+});

@@ -1,3 +1,5 @@
+> Current specification: [MODEL_SPEC.md](MODEL_SPEC.md). This document retains earlier model/source details. Raw corridor exports are still display-only; the new explicit paired hybrid mode can affect simulated line failures. No unpublished transmission training results are claimed.
+
 # Team integration: atlas, failure predictions, decision engine
 
 ## Map and network teammate

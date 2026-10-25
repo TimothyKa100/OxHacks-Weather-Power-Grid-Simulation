@@ -21,10 +21,10 @@ from .grid_ops import _OVERRIDES
 PYLON_MEDIAN_GUST = float(_OVERRIDES.get('pylon_median_gust', PYLON_MEDIAN_GUST))  # sensitivity sweeps only
 
 
-def pylon_failure_probability(gust_kmh, median=None):
-    """Probability one pylon collapses during an hour with this peak local gust."""
+def pylon_failure_probability(gust_kmh, median_gust=None, dispersion=PYLON_BETA):
+    """Probability one pylon collapses during an hour with this peak local gust (median may be per sample)."""
     gust = np.maximum(np.asarray(gust_kmh, float), 1e-6)
-    return ndtr(np.log(gust/(PYLON_MEDIAN_GUST if median is None else median))/PYLON_BETA)
+    return ndtr(np.log(gust/(PYLON_MEDIAN_GUST if median_gust is None else median_gust))/dispersion)
 
 
 def hardened_median():
@@ -64,7 +64,7 @@ def storm_path(net, hours, rng):
     return centre, strength
 
 
-def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
+def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.), median_gust=PYLON_MEDIAN_GUST, dispersion=PYLON_BETA):
     """Core engine. gust_at(t) -> gust (km/h, at the pylon) for every route sample in hour t.
 
     Returns hourly frames plus the per-sample collapse hazard of every hour (for benchmarking),
@@ -103,10 +103,11 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
 
         gust = gust_at(t)
         # Hazard per sample = its pylons times -log(survival of one pylon); a line sums its samples.
-        median = samples['median']
-        hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median), 1-1e-12))
+        # Per-line medians (wood-pole 33/66 kV lower) scale with the chosen fragility median.
+        median = samples['median']*median_gust/PYLON_MEDIAN_GUST
+        hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median, dispersion), 1-1e-12))
         hazards.append(hazard)
-        hardened.append(-samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median*hardened_median()/PYLON_MEDIAN_GUST), 1-1e-12)))
+        hardened.append(-samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median*hardened_median()/PYLON_MEDIAN_GUST, dispersion), 1-1e-12)))
         line_probability = -np.expm1(-np.bincount(line_of, hazard, net.m))
         fell = np.flatnonzero(active & (rng.random(net.m) < line_probability))
         for i in fell:
@@ -130,13 +131,13 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
     return frames, np.array(hazards), np.array(hardened)
 
 
-def model_info(net):
-    return {'pylon_median_gust_kmh': PYLON_MEDIAN_GUST, 'pylon_beta': PYLON_BETA,
+def model_info(net,median_gust=PYLON_MEDIAN_GUST,dispersion=PYLON_BETA):
+    return {'pylon_median_gust_kmh': median_gust, 'pylon_beta': dispersion,
             'altitude_factor': 'c_alt = 1 + 0.001 x elevation x (10 / tower height)^0.2',
             'route_samples': int(len(route_samples(net)['line']))}
 
 
-def planning_exposure(net, frames, hazards, timestamps, source, hardened=None):
+def planning_exposure(net, frames, hazards, timestamps, source, median_gust=PYLON_MEDIAN_GUST, dispersion=PYLON_BETA, hardened=None):
     """Full-precision route risk for the shared multi-day decision engine.
 
     Engineering probabilities are labelled separately from trained ML predictions.
@@ -144,7 +145,7 @@ def planning_exposure(net, frames, hazards, timestamps, source, hardened=None):
     """
     line_of=route_samples(net)['line']
     return {'source':source, 'branch_ids':[e['id'] for e in net.branches],
-            'engineering_model':{'name':'route-pylon-v1','parameters':model_info(net)},
+            'engineering_model':{'name':'route-pylon-v1','parameters':model_info(net,median_gust,dispersion)},
             'hours':[{'timestamp':timestamps[t], 'gust_kmh':frames[t+1]['gust_kmh'], 'rain_mm_h':0,
                       'failure_probability':(-np.expm1(-np.bincount(line_of,hazard,net.m))).tolist(),
                       **({'failure_probability_hardened':(-np.expm1(-np.bincount(line_of,hardened[t],net.m))).tolist()}
@@ -152,11 +153,12 @@ def planning_exposure(net, frames, hazards, timestamps, source, hardened=None):
                      for t,hazard in enumerate(hazards)]}
 
 
-def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak'):
+def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak', median_gust=PYLON_MEDIAN_GUST, dispersion=PYLON_BETA):
     """Synthetic depression crossing the network south-west to north-east."""
     rng = np.random.default_rng(seed)
     samples = route_samples(net)
-    centre, strength = storm_path(net, hours, rng)
+    weather_rng=np.random.default_rng(seed)
+    centre, strength = storm_path(net, hours, weather_rng)
     if storm_type=='persistent':
         strength=.35+.65*np.sin(np.pi*np.linspace(.05,.95,hours))**.35
     elif storm_type=='double_peak':
@@ -164,15 +166,23 @@ def run_storm(net, peak_gust=160, hours=36, seed=1, storm_type='single_peak'):
     elif storm_type!='single_peak':
         raise ValueError('Unknown storm preset')
 
+    raw_gusts=[]
     def gust_at(t):
         distance = np.sum((samples['xy']-centre[t])**2, axis=1)
         field = peak_gust*strength[t]*(.3+.7*np.exp(-distance/(2*STORM_SIGMA**2)))  # sea-level gust
-        return field*rng.lognormal(0, GUSTINESS, field.shape)*samples['c_alt']
+        raw=field*weather_rng.lognormal(0, GUSTINESS, field.shape)
+        raw_gusts.append(raw)
+        return raw*samples['c_alt']
 
     marker = lambda t: ([round(float(c), 4) for c in centre[t]], STORM_SIGMA)
-    frames, hazards, hardened = simulate_gusts(net, hours, gust_at, rng, marker)
+    frames, hazards, hardened = simulate_gusts(net, hours, gust_at, rng, marker, median_gust, dispersion)
     from datetime import datetime,timedelta,timezone
     start=datetime(2026,1,1,tzinfo=timezone.utc)
     timestamps=[(start+timedelta(hours=t)).isoformat() for t in range(hours)]
-    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed,'storm_type':storm_type}, 'model': model_info(net), 'frames': frames,
-            'planning_weather':planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility',hardened)}
+    exposure=planning_exposure(net,frames,hazards,timestamps,'Synthetic geographic windstorm; illustrative route/pylon fragility',median_gust,dispersion,hardened)
+    from .ml_risk import route_weather_features
+    exposure['ml_weather_source']='Synthetic unadjusted route gusts, equal sample weights; not ERA5 observations. Rain, temperature and direction unavailable.'
+    for row,features in zip(exposure['hours'],route_weather_features(net,raw_gusts)):
+        row['ml_weather']=features
+    return {'config': {'peak_gust': peak_gust, 'hours': hours, 'seed': seed,'storm_type':storm_type}, 'model': model_info(net,median_gust,dispersion), 'frames': frames,
+            'planning_weather':exposure}

@@ -12,10 +12,24 @@ const GOLDEN = 0.6180339887;
 export const LAYER_STEP = 0.05;
 export const layerTime = t => Math.round(t / LAYER_STEP) * LAYER_STEP;
 
+// Protection rounds of a cascade are spread over this many hours each after the hour's failures,
+// and playback slows down there (App.jsx) so every round can be seen.
+export const ROUND_GAP = 0.06;
+const CASCADE_HOLD = 0.12; // the settled state stays in focus this long after the last round
+
 export function buildTimeline(run) {
   const {frames} = run;
-  const times = frames.map(f => (f.hour === 0 ? 0 : f.hour - 1 + EVENT_AT));
+  const times = frames.map(f => (f.hour === 0 ? 0 : f.hour - 1 + EVENT_AT + (f.cascade ? (f.cascade.round - 1) * ROUND_GAP : 0)));
   const lastHour = frames[frames.length - 1].hour;
+  // One window per hour with overload trips: when it starts and ends, and which branches tripped.
+  const cascades = [];
+  frames.forEach((f, i) => {
+    if (!f.cascade || f.cascade.settled) return;
+    let w = cascades[cascades.length - 1];
+    if (!w || w.hour !== f.hour) cascades.push(w = {hour: f.hour, start: times[i], end: times[i], rounds: f.cascade.rounds, tripped: []});
+    w.tripped.push(...(f.cascade.tripped || []));
+    w.end = times[i] + ROUND_GAP + CASCADE_HOLD;
+  });
 
   // Synthetic storm centre per hour, sized by how strong that hour's gusts are.
   const peakGust = Math.max(1, ...frames.map(f => Math.max(0, ...(f.gust_kmh || [0]))));
@@ -27,7 +41,12 @@ export function buildTimeline(run) {
   // (deterministically) so they appear continuously rather than in hourly bursts.
   const outageTimes = (run.outages || []).map((o, i) => o[2] + ((i * GOLDEN) % 1));
 
-  return {frames, times, lastHour, end: lastHour + TAIL, stormKeys, outageTimes};
+  return {frames, times, lastHour, end: lastHour + TAIL, stormKeys, outageTimes, cascades};
+}
+
+// The cascade window containing t (with a short lead-in for the camera), if any.
+export function cascadeAt(timeline, t, lead = 0) {
+  return timeline.cascades.find(w => t >= w.start - lead && t <= w.end) || null;
 }
 
 export function frameIndexAt(timeline, t) {

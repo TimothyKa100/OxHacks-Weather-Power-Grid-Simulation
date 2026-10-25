@@ -1,0 +1,157 @@
+{
+  "built_utc": "2026-10-25T11:51:07+00:00",
+  "source_commit": "91fce27",
+  "total_bytes": 26638391,
+  "files": {
+    "gb_network.json": {
+      "bytes": 508284,
+      "sha256": "ef1f5cfb2d57abe26ade9d659bcf26394b2bf8d7ea8cbc2927a112d9b8abd932",
+      "purpose": "GB backbone network (buses, branches, generators, routes)"
+    },
+    "ieee14.json": {
+      "bytes": 5494,
+      "sha256": "4639596ad997e8923f3688691deb5683f7f5e5eabc860d2d0a9780a448e1dfe9",
+      "purpose": "IEEE 14-bus test network"
+    },
+    "sample_weather.json": {
+      "bytes": 696,
+      "sha256": "c51c86b8a4c3a5d22b02725e09382fee0055fba145f611c87aee40493e93c058",
+      "purpose": "Legacy-mode weather profile"
+    },
+    "sample_storm.json": {
+      "bytes": 819009,
+      "sha256": "732ad046ad6dc84620aae3f921d492f99f579c705edc11c852c1377f3063e48f",
+      "purpose": "Offline frontend fallback storm"
+    },
+    "storms/amy-2025.json": {
+      "bytes": 452082,
+      "sha256": "fb9bbbe76105e175c0eabd7822e292460ede10f6be24be27f6225773649641fb",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/austen-2026.json": {
+      "bytes": 350165,
+      "sha256": "d0e29531d6c05f3796598ac454308b14500b93cbeca311ede9b7aa3386652d00",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/bert-2024.json": {
+      "bytes": 670177,
+      "sha256": "f8ac1a938612c60d8f89cb6c531d95ddcc851047deb54f560e8aa3763db039e6",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/bram-2025.json": {
+      "bytes": 460379,
+      "sha256": "dbf506cc8c357f0e34ba7ea9746ecb0a7fa6685fa5a02b106e9db5b0161c2f02",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/claudia-2025.json": {
+      "bytes": 463727,
+      "sha256": "167f4a19401fa740916d6a22367bfed58c0b1148e3d6af1325ebed080af7e5ee",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/darragh-2024.json": {
+      "bytes": 601373,
+      "sha256": "3b9e35b9f317a18179230b735533cc9b8616144b7bc108b179684401d8f9e3e3",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/eowyn-2025.json": {
+      "bytes": 453471,
+      "sha256": "b1e0eea2480e7200b27831deed524abb4fa514047aa98cadd93740bdbcd2dfff",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/goretti-2026.json": {
+      "bytes": 476808,
+      "sha256": "fa23cac55d1466f2abf03621c5b9dc21a0a3605d07f50794cad4c9ccaea3dd3f",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "storms/index.json": {
+      "bytes": 1949,
+      "sha256": "93ba551b91591d18c7c29596b2efb2aee879492474d39d32e250ae103df1456a",
+      "purpose": "Historical storm replays (gridded gusts and observed outages)"
+    },
+    "grid/detail_graph.json": {
+      "bytes": 7329801,
+      "sha256": "76c598511b9f310375521da8b14cb22da811ab1ac6183e47f4076bd1c985d2e9",
+      "purpose": "National 33-400 kV graph reduced into view networks"
+    },
+    "grid/asset_index.parquet": {
+      "bytes": 10458959,
+      "sha256": "58682e11b65a98b76b4e50eda979a64b33d7e981b0c7f43552c745f711724a44",
+      "purpose": "Grid-archive assets for the map level-of-detail layer"
+    },
+    "grid/ATTRIBUTION.md": {
+      "bytes": 5080,
+      "sha256": "104547a9df563edbe350e2803d6442397288edc831c03beef33fada0619d351a",
+      "purpose": "Source licences for the grid-derived files"
+    },
+    "failure_model/models/gb-corridor-xgb-v1/calibration.json": {
+      "bytes": 246,
+      "sha256": "fd1e1788782d35168947ceb5af34c0091cd0cae7ac2be2a9b01ee00bf1c6f3e7",
+      "purpose": "Corridor model v1 (comparison, archived exports)"
+    },
+    "failure_model/models/gb-corridor-xgb-v1/evaluation.json": {
+      "bytes": 19638,
+      "sha256": "2c287f9b2a334d272a6ff2b03ee7c59863712c42f1889bdbdc3efdd243022248",
+      "purpose": "Corridor model v1 (comparison, archived exports)"
+    },
+    "failure_model/models/gb-corridor-xgb-v1/model.ubj": {
+      "bytes": 597818,
+      "sha256": "7f9df1cf77acb5482871fb67f3adc094c8952c48436838bc3c4a09914d400517",
+      "purpose": "Corridor model v1 (comparison, archived exports)"
+    },
+    "failure_model/models/gb-corridor-xgb-v1/model_manifest.json": {
+      "bytes": 11178,
+      "sha256": "71c63c3da604a5ddbfeec2129976b69ac6d106a609a8971bafd06559bad8ddb7",
+      "purpose": "Corridor model v1 (comparison, archived exports)"
+    },
+    "failure_model/models/gb-corridor-xgb-v1/reliability.png": {
+      "bytes": 74912,
+      "sha256": "51b0cd35fec9a78d74641b2bd8f61da23b9596406f929ac4b6aa19473e09049b",
+      "purpose": "Corridor model v1 (comparison, archived exports)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/calibration.json": {
+      "bytes": 575,
+      "sha256": "fcc2ce728deecf9ddc8b3ca11f130778f6dad13536a8f80a3bb4fb7468f050a7",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/evaluation.json": {
+      "bytes": 7280,
+      "sha256": "3cf97c30261ef2ad72132d52c6a7980497af4f04431e48eafcda2a23d8514bd8",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/model_full.ubj": {
+      "bytes": 542284,
+      "sha256": "33947119f3fdd2361582d44ab7cfa742365fb68e91807adaa879143b7134d747",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/model_manifest.json": {
+      "bytes": 6738,
+      "sha256": "21344da36dfaf0a75186ae34240eb45dde7f27ea7ccd6fe0107f2d876d95d65b",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/model_reduced.ubj": {
+      "bytes": 664147,
+      "sha256": "5de58507626496833b3bfa64c242be40453692dcd88b3ffaa70a3fc0f2b1a549",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/models/gb-corridor-xgb-v2/training_routes.json": {
+      "bytes": 43743,
+      "sha256": "b5244b340ed49fb3578faaa2846cbaf49185666d33dae6644f66310a90cd2f1e",
+      "purpose": "Corridor model v2 (hybrid ML input)"
+    },
+    "failure_model/exports/darragh-2024_gb-corridor-xgb-v1.json": {
+      "bytes": 670465,
+      "sha256": "19fb053f79562bcfa163298a9bb406978d37c1c2d8c85d43aedfc885b1de65ca",
+      "purpose": "Archived complete-feature predictions for replays"
+    },
+    "failure_model/exports/darragh-2024_gb-corridor-xgb-v2.json": {
+      "bytes": 750341,
+      "sha256": "ae3434e40f6587774d5476d09c4b75416937b9ef6a5fa6bef7982c0281753266",
+      "purpose": "Archived complete-feature predictions for replays"
+    },
+    "examples/synthetic_hybrid_pair.json": {
+      "bytes": 191572,
+      "sha256": "ed5846f3556085ef18daf39288b3c84580132806bd07fe5b3c6e9bb572d30660",
+      "purpose": "Example uploads (paired hybrid profile)"
+    }
+  }
+}

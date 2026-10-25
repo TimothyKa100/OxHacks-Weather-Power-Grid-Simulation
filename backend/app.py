@@ -11,7 +11,9 @@ from .weather import validate_weather, STORM_PRESETS
 from .decisions import validate_economics
 from .storm import run_storm
 from .benchmark import STORM_LIST, STORMS, run_real_storm
-from .planning import run_storm_plan
+from .planning import RECOVERY_HOURS, run_storm_plan, storm_context
+from .hybrid import validate_pair, settings, fragility_settings
+from .paths import DATA
 
 ROOT=Path(__file__).resolve().parents[1]
 app=Flask(__name__,static_folder=str(ROOT/'frontend/dist'),static_url_path='')
@@ -62,7 +64,7 @@ def storm_plan():
             return value
         params={key:integer(key,*bounds) for key,bounds in {
             'peak_gust':(160,60,250),'hours':(36,1 if weather is not None else 6,72),'seed':(1,0,2147483647),
-            'samples':(16,16,128),'budget':(5,0,12),'crews':(6,1,40)}.items()}
+            'samples':(16,16,128),'budget':(5,0,12),'crews':(6,1,40),'recovery_hours':(RECOVERY_HOURS,0,96)}.items()}
         preset=data.get('storm_type','single_peak')
         if not isinstance(preset,str) or preset not in STORM_PRESETS: raise ValueError('Unknown storm preset')
         economics=validate_economics(data.get('economics'))
@@ -74,13 +76,30 @@ def storm_plan():
                 raise ValueError('custom_lines must contain GB branch IDs')
             if len(set(custom))!=len(custom): raise ValueError('Duplicate custom line IDs')
             if sum(net.cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
-        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather,network=name)
+        failure_mode=data.get('failure_mode','engineering')
+        if failure_mode not in ('engineering','hybrid'): raise ValueError('failure_mode must be engineering or hybrid')
+        pair=data.get('hybrid_profile'); hybrid=settings(data.get('hybrid')); fragility=fragility_settings(data.get('fragility'))
+        if weather is not None and data.get('fragility') is not None and fragility!={'median_gust':265.,'dispersion':.12}:
+            raise ValueError('Imported probabilities already define fragility; change the source profile instead')
+        if failure_mode=='hybrid':
+            if weather is not None and 'failure_probability' not in weather['hours'][0]:
+                raise ValueError('Hybrid imported weather must include engineering probabilities')
+            exposure=weather if weather is not None else storm_context(net,scenario,params['peak_gust'],params['hours'],params['seed'],preset,**fragility)['planning_weather']
+            dates=[r['timestamp'] for r in exposure['hours']]
+            if pair is not None: validate_pair(pair,[e['id'] for e in net.branches],dates)
+            elif weather is not None and any('ml_weather' not in row for row in exposure['hours']):
+                raise ValueError('Built-in hybrid imported weather requires raw ml_weather features; alternatively supply paired predictions')
+        elif pair is not None: raise ValueError('Select hybrid mode to use paired predictions')
+        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather,
+                      failure_mode=failure_mode,hybrid_profile=pair,hybrid=hybrid,fragility=fragility,network=name)
     except (ValueError,BadRequest,UnsupportedMediaType) as exc:
         return jsonify({'error':str(exc)}),400
     if not experiment_lock.acquire(blocking=False):
         return jsonify({'error':'An experiment is running. Try again shortly.'}),429
     try:
         return jsonify(cached_storm_plan(json.dumps(params,sort_keys=True)))
+    except (ValueError,ImportError) as exc:
+        return jsonify({'error':str(exc)}),400
     finally:
         experiment_lock.release()
 
@@ -131,7 +150,7 @@ def view_network():
     net=network_named(name)
     return jsonify({**net.payload(),'id':name})
 
-RISK_DIR=ROOT/'data/failure_model/exports'
+RISK_DIR=DATA/'failure_model/exports'
 
 def corridor_risk_files():
     """Exports from `python -m failure_model gb-export` (area-level corridor risk), keyed by file stem."""
@@ -145,7 +164,7 @@ def corridor_risk_files():
 
 @app.get('/api/corridor-risk')
 def corridor_risk():
-    """A display layer only: these probabilities never enter the line-failure simulation."""
+    """Raw area-risk display layer; the hybrid separately derives a relative signal."""
     files=corridor_risk_files()
     layer=request.args.get('id')
     if layer is None:
