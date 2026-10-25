@@ -34,7 +34,7 @@ def run_storm_plan(net, scenario='synthetic', peak_gust=160, hours=36, seed=1,
                         storm_type=storm_type,custom_lines=custom_lines,economics=economics)
     descriptor=dict(scenario=scenario,peak_gust=peak_gust,hours=len(exposures['hours']),seed=seed,
                     storm_type=storm_type,samples=samples,budget=budget,crews=crews,
-                    custom_lines=custom_lines,economics=plan['config']['economics'],weather=weather)
+                    custom_lines=custom_lines,economics=plan['config']['economics'],weather=weather,network=net.name)
     plan['model']['weather']=exposures['source']
     if 'engineering_model' in exposures:
         plan['model']['failure_model']='Route/pylon engineering hourly probabilities; assumed hardening hazard multiplier 0.25'

@@ -53,6 +53,10 @@ def load_storm(storm_id):
 class Projection:
     """Same equirectangular projection the network builder used (derived from bus extents)."""
     def __init__(self, net):
+        if net.name.startswith('view:'):
+            # View networks are drawn in the backbone's map units (view_network.build), whatever their extent.
+            from .simulation import Network
+            net = Network('gb')
         lon = np.array([b['lon'] for b in net.buses]); lat = np.array([b['lat'] for b in net.buses])
         self.x0, self.y0, self.y1 = lon.min(), lat.min(), lat.max()
         self.k = np.cos(np.radians(54))/(self.y1-self.y0)

@@ -1,5 +1,5 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {OfflineError, fetchRiskLayer, fetchRiskLayers, fetchStorms, loadSample, simulate} from './api.js';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {OfflineError, fetchRiskLayer, fetchRiskLayers, fetchStorms, fetchViewNetwork, loadSample, simulate} from './api.js';
 import {checkRun, checkNetwork} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
@@ -35,6 +35,19 @@ export default function App() {
   const [riskId,setRiskId]=useState('');
   const [riskLayer,setRiskLayer]=useState(null);
   const shown=useMemo(()=>portfolioRun(run,policy),[run,policy]);
+  // The simulated network follows the view: before a run it is rebuilt for whatever is on screen;
+  // a finished run keeps the network it was simulated on until you rebuild for the new view.
+  const [viewBox,setViewBox]=useState(null);
+  const [runView,setRunView]=useState(null);
+  const viewKey=viewBox?viewBox.map(v=>v.toFixed(3)).join(','):'';
+  const onView=useCallback(box=>setViewBox(previous=>previous&&previous.every((v,i)=>Math.abs(v-box[i])<1e-6)?previous:box),[]);
+  useEffect(()=>{
+    if(!viewBox||run||offline)return undefined;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>{fetchViewNetwork(viewBox,controller.signal).then(net=>{if(net&&!net.error)setNetwork(net)}).catch(()=>{})},250);
+    return ()=>{clearTimeout(timer);controller.abort()};
+  },[viewKey,run,offline]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const viewChanged=run&&runView&&viewKey&&runView!==viewKey;
   // The map frame is exactly as wide as the storm picker and Simulate button.
   const controlsRef=useRef(null);
   const [mapWidth,setMapWidth]=useState(null);
@@ -124,7 +137,8 @@ export default function App() {
     try {
       let result;
       try {
-        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null};
+        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null,
+          network:scenario==='imported'?'gb':(network?.id||'gb')};
         result = await simulate(parameters.scenario,parameters);
         setOffline(false);
       } catch (err) {
@@ -135,7 +149,7 @@ export default function App() {
       }
       const problem = checkRun(result);
       if (problem) throw new Error(`Unexpected simulation data: ${problem}`);
-      setNetwork(result.network);
+      setNetwork(result.network);setRunView(viewKey);
       setT(0);
       setRun(result);
       setPolicy(nextPolicy);setPlaying(true);
@@ -171,7 +185,7 @@ export default function App() {
   return (
     <main className="page">
       <div className="map-wrap" style={mapWidth ? {width: mapWidth} : undefined}>
-        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} risk={riskView?.values} /> : !error && <p className="note">Loading grid…</p>}
+        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} risk={network.id?null:riskView?.values} onView={onView} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
       <div className="panel">
@@ -192,6 +206,9 @@ export default function App() {
           </button>
         </div>
         <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());if(profile.prediction_unit==='line_corridor_area_risk'){loadRiskFile(profile);setError('');return}setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        {network?.view && <p className="note">Simulated network: {network.buses.length} buses and {network.branches.length} branches, {network.view.buses_in_view} buses in view
+          {network.id && network.view.graph_buses_in_view > network.view.buses_in_view ? ` (of ${network.view.graph_buses_in_view} mapped here; zoom in for more)` : ''}; the rest of GB is clustered.
+          {viewChanged && <> <button type="button" className="link-button" onClick={()=>{setRun(null);setPlaying(false);setT(0)}}>Rebuild for this view</button></>}</p>}
         <div className="risk-layer">
           <label htmlFor="risk">Corridor outage risk</label>
           <select id="risk" value={riskId} onChange={e => chooseRisk(e.target.value)}>

@@ -27,6 +27,14 @@ python scripts/security_analysis.py
 
 The builder clusters endpoints of the same voltage within 2 km into substation buses and splits routes at T-joins the clustering missed. Separate routes stay separate branches; overhead routes are assumed double-circuit. It adds the archive's 275/400 kV underground cables, transformers between co-located voltage levels, links from dead ends to a substation of the same voltage within 10 km, interconnector imports and boundary supplies where coverage ends. It keeps the largest connected component (96% of overhead route length) and sizes transformer and cable counts the data lacks to secured operating points. `security_analysis.py` reports the single-circuit (N-1) result. Reactances, ratings, dispatch and the 30 GW demand allocation are illustrative; see [the cascade model](docs/CASCADE_MODEL.md). Synthetic storms on this network are a depression crossing GB from south-west to north-east, so gusts vary by location. A GB storm plan with 16 held-out scenarios takes about 100 s with three worker processes; repeat settings are cached. Data © OpenStreetMap contributors (ODbL); see [ATTRIBUTION.md](ATTRIBUTION.md).
 
+## Grid-archive assets on the map
+
+The map also draws the grid archive's 887,683 located assets: 240k substations, 9.6k power stations, 625k embedded generators, 11.8k transformers, plus storage, HVDC converters, compensators and switchgear. Build the index once with `python scripts/build_asset_index.py`; it writes `data/grid/asset_index.parquet` (git-ignored).
+
+There are no preset zoom levels. Each asset has a continuous importance score from its kind, voltage and capacity. For whatever is on screen, `GET /api/assets` returns the ~1,000 most important assets in view, spread across the view (`backend/assets.py`). Zooming in shrinks the view, so smaller stations, substations and transformers rise into the budget.
+
+The cascade still runs on the transmission backbone; hundreds of thousands of assets without electrical parameters cannot be solved hourly. Each asset is linked to its nearest backbone bus, its stand-in supply point, and turns red when the simulation leaves that bus short of supply. Northern Ireland assets are shown but not simulated.
+
 ## Multi-day damage and recovery
 
 `POST /api/experiment` with `"mode": "multiday"` runs a 1–72 hour storm with probabilistic failures, weather-gated repairs by limited crews, and hourly reconnection. It accepts imported hourly weather JSON for historical exposure replay; `"mode": "legacy"` is the original five-hour experiment. See [multi-day inputs, recovery assumptions and data sources](docs/MULTIDAY.md). Imported weather does not supply real asset geography or calibrate failure probabilities.

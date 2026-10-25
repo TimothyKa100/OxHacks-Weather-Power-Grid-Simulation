@@ -259,3 +259,4 @@ body {
 .startup-error{max-width:700px;margin:10vh auto;padding:28px;line-height:1.7}.startup-error button{padding:10px 16px;cursor:pointer;background:#b5dd87;border:0;border-radius:6px;color:#182614}
 .risk-layer{display:flex;gap:8px;align-items:center;font-size:13px;color:#c3c2b7}.risk-layer select{font:inherit;padding:6px 10px;border-radius:999px;border:1px solid #3a434f;background:#1c2128;color:#f0efec}
 .risk-legend{max-width:640px}.risk-ramp{display:inline-block;width:48px;height:8px;margin-right:6px;vertical-align:middle;border-radius:4px;background:linear-gradient(90deg,#3a2d5c,#d08cff)}
+.link-button{background:none;border:0;padding:0;color:#a8dc81;text-decoration:underline;cursor:pointer;font:inherit}

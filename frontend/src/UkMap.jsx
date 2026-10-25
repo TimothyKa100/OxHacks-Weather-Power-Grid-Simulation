@@ -1,6 +1,7 @@
 import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {mapFrame, outline} from './geo.js';
 import {flashesAt, gustsAt, layerTime, mix, stateAt, stormAt} from './timeline.js';
+import {fetchAssets} from './api.js';
 
 const LINE = {400: '#a9bccb', 275: '#8399aa', 132: '#617888'};
 const WIDTH = {400: 1.5, 275: 1.1, 132: 0.75};
@@ -26,16 +27,28 @@ const RISK_LOW = '#3a2d5c';
 const RISK_HIGH = '#d08cff';
 export const riskLevel = p => Math.min(1, Math.max(0, (Math.log10(Math.max(p, 1e-4)) + 4) / (4 + Math.log10(0.3))));
 
-export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, risk}) {
+export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, risk, onView}) {
   const geo = useMemo(() => mapFrame(network.buses), [network]);
   const shapes = useMemo(() => {
     const index = new Map(network.buses.map((b, i) => [b.id, i]));
     const buses = network.buses.map(b => geo.px(b.x, b.y));
     const routes = network.branches.map(e => {
-      // Real route where the backend has one, with its ends pinned to the substations.
+      // Real route where the backend has one, with its ends pinned to the substations. In a view
+      // network a bus can stand for a cluster far from where the route ends; then keep the route's
+      // own ends instead of drawing a long straight spoke to the cluster's bus.
       const ends = [buses[index.get(e.from)], buses[index.get(e.to)]];
-      const middle = (e.geometry || []).slice(1, -1).map(([x, y]) => geo.px(x, y));
-      const points = [ends[0], ...middle, ends[1]];
+      const route = (e.geometry || []).map(([x, y]) => geo.px(x, y));
+      if (route.length < 2) {
+        const points = ends;
+        return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[0]};
+      }
+      const gap = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+      const flipped = gap(route[0], ends[1]) + gap(route[route.length - 1], ends[0]) < gap(route[0], ends[0]) + gap(route[route.length - 1], ends[1]);
+      const path = flipped ? [...route].reverse() : route;
+      const near = 6 * outline.scale / 111;  // ~6 km in screen units (degrees x scale)
+      const first = gap(path[0], ends[0]) < near ? ends[0] : path[0];
+      const last = gap(path[path.length - 1], ends[1]) < near ? ends[1] : path[path.length - 1];
+      const points = [first, ...path.slice(1, -1), last];
       return {points: points.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '), mid: points[Math.floor(points.length / 2)]};
     });
     return {buses, routes};
@@ -45,6 +58,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
   const fadeStep = state ? quantize(state.fade, 0.1) : 1;
   const storm = timeline ? stormAt(timeline, t) : null;
   const {wrapRef, svgRef, box, view, zoomBy, reset} = useZoom(outline.width, outline.height);
+  const assets = useViewAssets(geo, view.box, network.id || 'gb', onView);
   // Marks grow slower than the zoom so detail separates instead of just getting bigger.
   const s = view.k ** -0.75;
 
@@ -74,6 +88,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
       )}
       {risk && <CorridorRisk network={network} routes={shapes.routes} risk={risk} s={s} />}
       <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} s={s} />
+      {assets && <Assets data={assets} geo={geo} network={network} state={state} fadeStep={fadeStep} s={s} />}
       <Buses network={network} positions={shapes.buses} state={state} fadeStep={fadeStep} s={s} />
       {run?.outages && timeline && <Outages outages={run.outages} times={timeline.outageTimes} geo={geo} t={layerTime(t)} s={s} />}
       {timeline &&
@@ -102,6 +117,26 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
     </div>
     </div>
   );
+}
+
+// The backend picks the ~1,000 most important archive assets in whatever is on screen
+// (no preset zoom levels); refetch once the view settles, cancelling stale requests.
+function useViewAssets(geo, viewBox, networkId, onView) {
+  const [assets, setAssets] = useState(null);
+  const key = viewBox.map(v => v.toFixed(2)).join(',');
+  useEffect(() => {
+    const [px, py, w, h] = viewBox;
+    const [x0, y0] = geo.unpx(px, py);
+    const [x1, y1] = geo.unpx(px + w, py + h);
+    const controller = new AbortController();
+    const box = [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+    const timer = setTimeout(() => {
+      onView?.(box);
+      fetchAssets(box, 1000, controller.signal, networkId).then(data => data && setAssets(data)).catch(() => {});
+    }, 150);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [geo, key, networkId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  return assets;
 }
 
 // Wheel/pinch zoom about the cursor and drag to pan, by moving the viewBox.
@@ -311,6 +346,39 @@ const CorridorRisk = memo(function CorridorRisk({network, routes, risk, s=1}) {
     </g>
   );
 });
+
+// Grid-archive assets: glyph by kind, size by importance. An asset goes red when the simulation
+// leaves its supplying backbone bus short of supply.
+const ASSET_STYLE = {
+  generation: {color: '#7bd88f', shape: 'circle', label: 'Power station'},
+  substation: {color: '#9fb3c8', shape: 'square', label: 'Substation'},
+  transformer: {color: '#c9a9e8', shape: 'diamond', label: 'Transformer'},
+  storage: {color: '#e0b05c', shape: 'square', label: 'Storage'},
+  converter: {color: '#5fc3e4', shape: 'diamond', label: 'HVDC converter'},
+  compensator: {color: '#e0b05c', shape: 'diamond', label: 'Compensator'},
+  switchgear: {color: '#9fb3c8', shape: 'diamond', label: 'Switchgear'},
+  distributed_generator: {color: '#4f8f63', shape: 'circle', label: 'Embedded generator'},
+};
+const Assets = memo(function Assets({data, geo, network, state, s=1}) {
+  return (
+    <g className="assets">
+      {data.assets.map(([x, y, kind, score, kv, mw, bus, name, id]) => {
+        const style = ASSET_STYLE[data.kinds[kind]] || ASSET_STYLE.substation;
+        const [cx, cy] = geo.px(x, y);
+        const r = (0.5 + 0.4 * score) * s;
+        const dark = state && bus >= 0 && bus < network.buses.length && isDark(state.frame, bus, network.buses[bus].load_mw);
+        const fill = dark ? BUS.dark : style.color;
+        const title = `${name || style.label}${kv ? ` · ${kv} kV` : ''}${mw ? ` · ${mw} MW` : ''} · ${style.label}` +
+          (bus >= 0 ? ` · supplied via bus ${bus + 1}${dark ? ' (losing supply)' : ''}` : ' · not simulated (Northern Ireland)');
+        const common = {fill, fillOpacity: 0.85, stroke: '#0d0f12', strokeWidth: 0.25 * s};
+        const shape = style.shape === 'circle' ? <circle cx={cx} cy={cy} r={r} {...common} />
+          : style.shape === 'square' ? <rect x={cx - r} y={cy - r} width={2 * r} height={2 * r} {...common} />
+          : <path d={`M${cx},${cy - r * 1.3}L${cx + r * 1.3},${cy}L${cx},${cy + r * 1.3}L${cx - r * 1.3},${cy}Z`} {...common} />;
+        return <g key={id}>{shape}<title>{title}</title></g>;
+      })}
+    </g>
+  );
+}, (a, b) => a.data === b.data && a.geo === b.geo && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep && a.s === b.s);
 
 // Where the outage feeds report at all: outside it, "no dots" means "no data".
 const Coverage = memo(function Coverage({coverage, geo}) {

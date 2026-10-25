@@ -36,6 +36,15 @@ export function simulate(scenario, options = {}) {
   }, 300000);
 }
 
+// Most important grid-archive assets inside a view (network map units); the backend picks them.
+export const fetchAssets = ([x0, y0, x1, y1], limit = 1000, signal, network = 'gb') =>
+  fetch(`/api/assets?x0=${x0}&y0=${y0}&x1=${x1}&y1=${y1}&limit=${limit}&network=${encodeURIComponent(network)}`, {signal})
+    .then(r => (r.ok ? r.json() : null));
+
+// Simulation network for a view: the national 33-400 kV graph reduced to it (backend/view_network.py).
+export const fetchViewNetwork = ([x0, y0, x1, y1], signal) =>
+  fetch(`/api/view-network?x0=${x0}&y0=${y0}&x1=${x1}&y1=${y1}`, {signal}).then(r => (r.ok ? r.json() : null));
+
 // Corridor outage-risk layers (display only; never sent to the simulator).
 export const fetchRiskLayers = () => request('/api/corridor-risk', {}, 5000);
 export const fetchRiskLayer = id => request(`/api/corridor-risk?id=${encodeURIComponent(id)}`, {}, 30000);

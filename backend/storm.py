@@ -41,11 +41,13 @@ def altitude_factor(elevation_m, height_m):
 def route_samples(net):
     """Flattened route samples: position, terrain height, owning line and pylon share."""
     if not hasattr(net, '_route_samples'):
-        rows = [(i, x, y, ele, e['pylons']/len(e['samples']), e['tower_height_m'])
+        rows = [(i, x, y, ele, e['pylons']/len(e['samples']), e['tower_height_m'], e.get('fragility_median_kmh') or PYLON_MEDIAN_GUST)
                 for i, e in enumerate(net.branches) for x, y, ele in e['samples']]  # transformers/links have none
-        line, x, y, ele, pylons, height = map(np.array, zip(*rows))
+        line, x, y, ele, pylons, height, median = map(np.array, zip(*rows))
+        # Wood-pole 33/66 kV routes carry a lower fragility median than lattice towers (detailed networks).
+        median = median*PYLON_MEDIAN_GUST/265.  # sensitivity sweeps scale every class together
         net._route_samples = {'line': line.astype(int), 'xy': np.column_stack([x, y]), 'ele': ele,
-                              'pylons': pylons, 'c_alt': altitude_factor(ele, height)}
+                              'pylons': pylons, 'c_alt': altitude_factor(ele, height), 'median': median}
     return net._route_samples
 
 
@@ -101,9 +103,10 @@ def simulate_gusts(net, hours, gust_at, rng, marker=lambda t: (None, 0.)):
 
         gust = gust_at(t)
         # Hazard per sample = its pylons times -log(survival of one pylon); a line sums its samples.
-        hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust), 1-1e-12))
+        median = samples['median']
+        hazard = -samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median), 1-1e-12))
         hazards.append(hazard)
-        hardened.append(-samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, hardened_median()), 1-1e-12)))
+        hardened.append(-samples['pylons']*np.log1p(-np.minimum(pylon_failure_probability(gust, median*hardened_median()/PYLON_MEDIAN_GUST), 1-1e-12)))
         line_probability = -np.expm1(-np.bincount(line_of, hazard, net.m))
         fell = np.flatnonzero(active & (rng.random(net.m) < line_probability))
         for i in fell:

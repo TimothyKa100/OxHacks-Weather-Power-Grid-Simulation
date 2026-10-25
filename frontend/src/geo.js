@@ -41,20 +41,25 @@ const PLACEHOLDER = {lonWest: -3.2, lonEast: 0.6, latNorth: 54.5, latSouth: 51.0
 export function mapFrame(buses) {
   const geographic = isGeographic(buses);
   let toLonLat;
+  let fromLonLat;
   let degLatPerUnit;
   if (geographic) {
     const lon = fitLine(buses.map(b => b.x), buses.map(b => b.lon));
     const lat = fitLine(buses.map(b => b.y), buses.map(b => b.lat));
     toLonLat = (x, y) => [lon.a * x + lon.b, lat.a * y + lat.b];
+    fromLonLat = (lo, la) => [(lo - lon.b) / lon.a, (la - lat.b) / lat.a];
     degLatPerUnit = Math.abs(lat.a);
   } else {
     const {lonWest, lonEast, latNorth, latSouth} = PLACEHOLDER;
     toLonLat = (x, y) => [lonWest + x * (lonEast - lonWest), latNorth - y * (latNorth - latSouth)];
+    fromLonLat = (lo, la) => [(lo - lonWest) / (lonEast - lonWest), (latNorth - la) / (latNorth - latSouth)];
     degLatPerUnit = latNorth - latSouth;
   }
   return {
     geographic,
     px: (x, y) => project(...toLonLat(x, y)),
+    // Screen (outline) coordinates back to network map units.
+    unpx: (px, py) => fromLonLat(px / (cosLat * scale) + bounds.lon_min, bounds.lat_max - py / scale),
     // Map units are isotropic (x is scaled by cos(latitude)), so one factor converts lengths.
     pxPerUnit: degLatPerUnit * scale,
   };

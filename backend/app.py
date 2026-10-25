@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 import json
+import math
 from threading import Lock
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.exceptions import BadRequest, UnsupportedMediaType
@@ -23,9 +24,18 @@ def cached_experiment(network,request_json):
     # Keyed on the full validated request, so imported weather and plans are cached too.
     return run_experiment(nets[network],**json.loads(request_json))
 
+@lru_cache(maxsize=6)
+def network_named(name):
+    """'gb' (the backbone) or a view network built by /api/view-network."""
+    if name in nets: return nets[name]
+    from .view_network import path_for
+    if not name.startswith('view:') or not path_for(name).exists(): raise ValueError('Unknown network; request /api/view-network first')
+    return Network(name)
+
 @lru_cache(maxsize=4)
 def cached_storm_plan(request_json):
-    return run_storm_plan(nets['gb'],**json.loads(request_json))
+    params=json.loads(request_json)
+    return run_storm_plan(network_named(params.pop('network')),**params)
 
 @app.post('/api/storm-plan')
 def storm_plan():
@@ -34,12 +44,16 @@ def storm_plan():
         if not isinstance(data,dict): raise ValueError('Expected a JSON object')
         scenario=data.get('scenario','synthetic')
         weather=data.get('weather')
+        name=data.get('network','gb')
+        if not isinstance(name,str): raise ValueError('network must be a name')
+        net=network_named(name)
+        if weather is not None and name!='gb': raise ValueError('Imported weather is defined on the gb network branch order')
         if not isinstance(scenario,str) or (scenario not in ('synthetic','imported') and scenario not in STORMS):
             raise ValueError('Unknown storm scenario')
         if (scenario=='imported')!=(weather is not None): raise ValueError('Imported scenario requires a weather profile; other scenarios use their own weather')
         if weather is not None:
-            validate_weather(weather,nets['gb'].m)
-            if 'branch_ids' in weather and weather['branch_ids'] != [e['id'] for e in nets['gb'].branches]:
+            validate_weather(weather,net.m)
+            if 'branch_ids' in weather and weather['branch_ids'] != [e['id'] for e in net.branches]:
                 raise ValueError('Weather branch_ids must match the GB network branch order')
         def integer(key,default,low,high):
             value=data.get(key,default)
@@ -52,15 +66,15 @@ def storm_plan():
         preset=data.get('storm_type','single_peak')
         if not isinstance(preset,str) or preset not in STORM_PRESETS: raise ValueError('Unknown storm preset')
         economics=validate_economics(data.get('economics'))
-        ids={e['id']:i for i,e in enumerate(nets['gb'].branches)}
+        ids={e['id']:i for i,e in enumerate(net.branches)}
         if set(economics['asset_costs_gbp'])-set(ids): raise ValueError('Unknown asset cost IDs')
         custom=data.get('custom_lines')
         if custom is not None:
             if not isinstance(custom,list) or any(not isinstance(i,str) or i not in ids for i in custom):
                 raise ValueError('custom_lines must contain GB branch IDs')
             if len(set(custom))!=len(custom): raise ValueError('Duplicate custom line IDs')
-            if sum(nets['gb'].cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
-        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather)
+            if sum(net.cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
+        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather,network=name)
     except (ValueError,BadRequest,UnsupportedMediaType) as exc:
         return jsonify({'error':str(exc)}),400
     if not experiment_lock.acquire(blocking=False):
@@ -84,6 +98,38 @@ def storms():
     """Real storms available to /api/storm (built by scripts/build_storm_benchmark.py), plus the grid they run on."""
     fields=('id','name','start','hours','operators','outages','peak_gust_kmh')
     return jsonify({'storms':[{k:s.get(k) for k in fields} for s in STORM_LIST],'network':nets['gb'].payload()})
+
+@app.get('/api/assets')
+def assets():
+    """Most important archive assets in a view (map units), for the procedural level of detail."""
+    from .assets import load, select, payload
+    try:
+        box=[float(request.args[k]) for k in ('x0','y0','x1','y1')]
+        budget=int(request.args.get('limit',1000))
+        if not 1<=budget<=3000 or not all(map(math.isfinite,box)) or box[2]<box[0] or box[3]<box[1]: raise ValueError()
+    except (KeyError,ValueError):
+        return jsonify({'error':'Give x0, y0, x1, y1 in map units (x1>=x0, y1>=y0) and limit 1-3000'}),400
+    try: net=network_named(request.args.get('network','gb'))
+    except ValueError as exc: return jsonify({'error':str(exc)}),400
+    index=load(net)
+    if index is None:
+        return jsonify({'total_in_view':0,'shown':0,'assets':[],'note':'Run scripts/build_asset_index.py to index the grid archive'})
+    return jsonify(payload(index,*select(index,*box,budget=budget)))
+
+@app.get('/api/view-network')
+def view_network():
+    """Simulation network for a map view: the national 33-400 kV graph reduced to this view."""
+    from .view_network import ensure
+    try:
+        box=[float(request.args[k]) for k in ('x0','y0','x1','y1')]
+        if not all(map(math.isfinite,box)) or box[2]<=box[0] or box[3]<=box[1]: raise ValueError()
+    except (KeyError,ValueError):
+        return jsonify({'error':'Give x0, y0, x1, y1 in map units (x1>x0, y1>y0)'}),400
+    name=ensure(box)
+    if name is None:
+        return jsonify({'error':'Run scripts/build_asset_index.py and scripts/build_detail_graph.py to build the detailed graph'}),404
+    net=network_named(name)
+    return jsonify({**net.payload(),'id':name})
 
 RISK_DIR=ROOT/'data/failure_model/exports'
 

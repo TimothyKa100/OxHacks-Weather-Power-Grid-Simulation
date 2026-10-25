@@ -20,7 +20,12 @@ NETWORKS={'ieee14':'data/ieee14.json','gb':'data/gb_network.json'}
 class Network:
     def __init__(self, name='ieee14'):
         self.name=name
-        self.data = json.loads((Path(__file__).resolve().parents[1]/NETWORKS[name]).read_text())
+        if name.startswith('view:'):
+            from .view_network import path_for  # a network reduced to a map view (view_network.py)
+            source = path_for(name)
+        else:
+            source = Path(__file__).resolve().parents[1]/NETWORKS[name]
+        self.data = json.loads(Path(source).read_text())
         self.geographic=bool(self.data.get('geographic'))
         self.buses, self.branches = self.data['buses'], self.data['branches']
         self.n, self.m = len(self.buses), len(self.branches)
@@ -87,7 +92,7 @@ class Network:
         return {'flows':flows,'served':served,'generation':generation,'islands':components,'residual_mw':float(np.max(np.abs(residual)))}
 
     def payload(self):
-        return {**self.data,'name':self.name,'total_load_mw':float(self.load.sum()),'branches':[{**{k:v for k,v in e.items() if k!='samples'},'rating_mw':round(float(self.ratings[i]),2)} for i,e in enumerate(self.branches)]}
+        return {**self.data,'name':self.name,**({'id':self.name} if self.name.startswith('view:') else {}),'total_load_mw':float(self.load.sum()),'branches':[{**{k:v for k,v in e.items() if k!='samples'},'rating_mw':round(float(self.ratings[i]),2)} for i,e in enumerate(self.branches)]}
 
 def simulate(net, scenario, hardened=(), playback=False):
     if net.geographic and 'transient_draws' in scenario:
@@ -274,18 +279,20 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
             raise ValueError('custom_lines must contain known branch IDs')
         if len(set(custom_lines))!=len(custom_lines): raise ValueError('Duplicate custom line IDs')
         if sum(net.cost[ids[i]] for i in custom_lines)>budget: raise ValueError('Custom plan exceeds the budget')
+    # View networks (backend/view_network.py) are larger, so their search uses a smaller training bank.
+    training_samples,max_candidates=(6,6) if net.name.startswith('view:') else (24,24)
     if mode=='multiday':
-        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,24,hours,weather,crews,storm_type)
+        training=multiday_scenarios(net,intensity,seed ^ 0xA51C,training_samples,hours,weather,crews,storm_type)
         heldout=multiday_scenarios(net,intensity,seed,samples,hours,weather,crews,storm_type)
     else:
-        training=scenarios(net,intensity,seed ^ 0xA51C,24)
+        training=scenarios(net,intensity,seed ^ 0xA51C,training_samples)
         heldout=scenarios(net,intensity,seed,samples)
     # Single-asset consequence estimates and recommendations use only the training bank.
     training_before=evaluate(net,training,[])
     training_loss=mean_loss(training_before)
     losses={():training_loss}
     # Large networks only evaluate the most frequently failing assets individually.
-    candidates=screen_candidates(net,training_before)
+    candidates=screen_candidates(net,training_before,max_candidates)
     for i,r in zip(candidates,evaluate_many(net,training,[[i] for i in candidates])): losses[(i,)]=mean_loss(r)
     def kind(i):
         e=net.branches[i]
@@ -298,7 +305,7 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
                        'cost_units':int(net.cost[i]),'training_gain_mwh':gain,
                        'training_gain_per_unit':gain/float(net.cost[i]),
                        'economics':cost_benefit(gain,float(net.cost[i]),economics,investment_for([i]))})
-    selected,trace=select_reinforcement(net,training,budget,losses,training_before)
+    selected,trace=select_reinforcement(net,training,budget,losses,training_before,max_candidates)
     risk=np.mean([(failure_probability if mode=='multiday' else fragility)(s['gust'],s['rain'] if s['rain'].ndim==2 else s['rain'][:,None],net.exposure) for s in training],axis=(0,1))
     if 'failure_probability' in training[0]: risk=np.mean([s['failure_probability'] for s in training],axis=(0,1))
     # Electrical topology baseline: initial absolute flow / cost (cost applied by ranking).
@@ -332,7 +339,7 @@ def run_experiment(net, intensity=100, seed=26, samples=128, budget=5, mode="leg
         if key=='prepared': result[key]['economics']['scope']='Queue ordering only; dispatch/travel/staff costs excluded'
     for row in assets:
         row['training_failure_frequency']=float(frequency[ids[row['id']]])
-    return {'config':{'network':net.name,'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':24,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews,
+    return {'config':{'network':net.name,'intensity':intensity,'seed':seed,'samples':samples,'budget':budget,'training_samples':training_samples,'mode':mode,'hours':len(heldout[0]['gust']),'crews':crews,
                       'storm_type':storm_type,'custom_lines':custom_lines,'economics':economics},
         'network':net.payload(),'portfolios':result,'optimization_trace':trace,'weather':weather if weather is not None else (load_profile() if mode=='legacy' else {'source':'Synthetic multi-day storm; illustrative route exposure'}),
         'decisions':{'assets':sorted(assets,key=lambda a:-a['training_gain_per_unit']),

@@ -30,3 +30,4 @@ data/failure_model/gb_corridor/
 data/failure_model/gb_weather/
 data/failure_model/exports/*_storm-plan_comparison.json
 data/sensitivity/
+data/view_networks/

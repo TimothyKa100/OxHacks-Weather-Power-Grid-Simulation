@@ -177,6 +177,33 @@ def solve(net, fraction, demand, variable, firm, sync, adjust=None):
             'headroom': firm*(1-f_share[labels])}
 
 
+def solve_lp(cost, A_ub, b_ub, A_eq, b_eq, lower, upper):
+    """min cost.x subject to A_ub x <= b_ub, A_eq x = b_eq, lower <= x <= upper. Calls HiGHS
+    directly (scipy's linprog wrapper spends ~0.5 s validating options per call); falls back to
+    linprog without highspy. Returns x, or None if not solved to optimality."""
+    try:
+        import highspy
+    except ImportError:
+        result = linprog(cost, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=list(zip(lower, upper)), method='highs')
+        return result.x if result.status == 0 else None
+    A = sparse.csc_matrix(np.vstack([A_ub, A_eq]))
+    inf = highspy.kHighsInf
+    lp = highspy.HighsLp()
+    lp.num_col_, lp.num_row_ = A.shape[1], A.shape[0]
+    lp.col_cost_ = np.asarray(cost, float)
+    lp.col_lower_ = np.asarray(lower, float); lp.col_upper_ = np.where(np.isinf(upper), inf, upper).astype(float)
+    lp.row_lower_ = np.concatenate([np.full(len(b_ub), -inf), b_eq]).astype(float)
+    lp.row_upper_ = np.concatenate([b_ub, b_eq]).astype(float)
+    lp.a_matrix_.format_ = highspy.MatrixFormat.kColwise
+    lp.a_matrix_.start_, lp.a_matrix_.index_, lp.a_matrix_.value_ = A.indptr, A.indices, A.data
+    h = highspy.Highs()
+    h.setOptionValue('output_flag', False)
+    h.passModel(lp)
+    h.run()
+    if h.getModelStatus() != highspy.HighsModelStatus.kOptimal: return None
+    return np.asarray(h.getSolution().col_value)
+
+
 def redispatch(net, solution, limits, fraction, penalty=1e4):
     """Re-dispatch: shift generation to bring monitored lines within `limits`, moving as few MW as
     possible. Limits are soft (heavily penalised slack), so when they cannot all be met the change
@@ -188,15 +215,14 @@ def redispatch(net, solution, limits, fraction, penalty=1e4):
     monitored = np.flatnonzero(active & (loading > .8))
     if not len(monitored): return np.zeros(net.n)
     position = np.full(net.n, -1); position[rest] = np.arange(len(rest))
-    rows = []
-    for l in monitored:
+    # Sensitivities of every monitored line to every injection, in one factorised solve.
+    rhs = np.zeros((len(rest), len(monitored)))
+    for k, l in enumerate(monitored):
         i, j = net.ends[l]
-        rhs = np.zeros(len(rest))
-        if position[i] >= 0: rhs[position[i]] += 1
-        if position[j] >= 0: rhs[position[j]] -= 1
-        x = np.zeros(net.n); x[rest] = lu.solve(rhs)
-        rows.append(solution['w'][l]*x)
-    ptdf = np.array(rows)
+        if position[i] >= 0: rhs[position[i], k] += 1
+        if position[j] >= 0: rhs[position[j], k] -= 1
+    x = np.zeros((net.n, len(monitored))); x[rest] = lu.solve(rhs)
+    ptdf = (x*solution['w'][monitored]).T
     gen = solution['generation']
     movable = np.flatnonzero((gen > 1e-6) | (solution['headroom'] > 1e-6))
     if not len(movable): return None
@@ -216,10 +242,10 @@ def redispatch(net, solution, limits, fraction, penalty=1e4):
     labels = solution['labels'][movable]
     islands = np.unique(labels)
     A_eq = np.array([np.concatenate([(labels == c).astype(float), -(labels == c).astype(float), np.zeros(nl+1)]) for c in islands])
-    result = linprog(cost, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=np.zeros(len(islands)),
-                     bounds=list(zip(np.zeros(2*k+nl+1), np.concatenate([up_max, down_max, np.full(nl+1, np.inf)]))), method='highs')
-    if result.status != 0: return None
-    delta = np.zeros(net.n); delta[movable] = result.x[:k]-result.x[k:2*k]
+    x = solve_lp(cost, A_ub, b_ub, A_eq, np.zeros(len(islands)), np.zeros(2*k+nl+1),
+                 np.concatenate([up_max, down_max, np.full(nl+1, np.inf)]))
+    if x is None: return None
+    delta = np.zeros(net.n); delta[movable] = x[:k]-x[k:2*k]
     return delta
 
 
