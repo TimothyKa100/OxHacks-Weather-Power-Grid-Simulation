@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {OfflineError, fetchStorms, loadSample, simulate} from './api.js';
 import {checkRun, checkNetwork} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
@@ -31,6 +31,18 @@ export default function App() {
   const [playing,setPlaying]=useState(false);
   const [importedWeather,setImportedWeather]=useState(null);
   const shown=useMemo(()=>portfolioRun(run,policy),[run,policy]);
+  // The map frame is exactly as wide as the storm picker and Simulate button.
+  const controlsRef=useRef(null);
+  const [mapWidth,setMapWidth]=useState(null);
+  useEffect(()=>{
+    const el=controlsRef.current;
+    if(!el)return undefined;
+    const measure=()=>setMapWidth(el.offsetWidth||null);
+    measure();
+    const observer=new ResizeObserver(measure);
+    observer.observe(el);
+    return ()=>observer.disconnect();
+  },[]);
   const update=(key,value)=>setConfig(c=>({...c,[key]:value}));
 
   // Storm list for the picker, and the intact grid to draw before the first run.
@@ -126,12 +138,12 @@ export default function App() {
 
   return (
     <main className="page">
-      <div className="map-wrap">
+      <div className="map-wrap" style={mapWidth ? {width: mapWidth} : undefined}>
         {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
       <div className="panel">
-        <div className="controls">
+        <div className="controls" ref={controlsRef}>
           <label className="visually-hidden" htmlFor="storm">
             Storm
           </label>

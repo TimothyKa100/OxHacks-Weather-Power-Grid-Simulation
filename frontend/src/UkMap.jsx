@@ -13,8 +13,6 @@ const STATUS_TEXT = {weather: 'weather failure', online: 'in service', pylon: 'p
 const quantize = (x, step) => Math.round(x / step) * step;
 const MAX_ZOOM = 12;
 const DRAG_PX = 4;
-// The map frame is at least this wide (a little wider than the storm controls), so a zoomed view isn't a narrow strip.
-const MIN_MAP_WIDTH = 480;
 
 // Everything is drawn from the simulation clock t, not CSS transitions, so the
 // map always shows exactly the state at time t.
@@ -97,8 +95,8 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
 
 // Wheel/pinch zoom about the cursor and drag to pan, by moving the viewBox.
 // A drag swallows the click that ends it, so panning never selects a line.
-// The frame (box, in px) can be wider than the map's own aspect; at k=1 the whole
-// map fits in it, and zooming fills the extra width instead of clipping to a strip.
+// The frame (box, in px) fills its container, usually wider than the map's own aspect;
+// at k=1 the whole map fits in it, and zooming fills the extra width.
 function useZoom(width, height) {
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
@@ -130,14 +128,13 @@ function useZoom(width, height) {
     const measure = () => {
       const W = wrap.clientWidth, H = wrap.clientHeight;
       if (!W || !H) return;
-      const w = Math.round(Math.min(W, Math.max(H * width / height, MIN_MAP_WIDTH)));
-      setBox(b => (b && b.w === w && b.h === H ? b : {w, h: H}));
+      setBox(b => (b && b.w === W && b.h === H ? b : {w: W, h: H}));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [width, height]);
+  }, []);
 
   const vw = base[0] / center.k, vh = base[1] / center.k;
   const view = {k: center.k, box: [center.cx - vw / 2, center.cy - vh / 2, vw, vh]};
