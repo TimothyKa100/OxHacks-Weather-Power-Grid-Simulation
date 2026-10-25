@@ -45,6 +45,7 @@ def main():
     gb_export.add_argument("--model-dir", type=Path)
     gb_export.add_argument("--api", help="Running app URL; branch order is read from /api/network?name=gb")
     gb_export.add_argument("--name")
+    gb_export.add_argument("--paired", action="store_true", help="Export a full/reference pair for explicit experimental hybrid mode")
     args = parser.parse_args()
     output = args.output
     weather = ROOT / "data/processed/weather"
@@ -94,8 +95,8 @@ def main():
             import requests
             order = [b["id"] for b in requests.get(args.api.rstrip("/") + "/api/network", params={"name": "gb"},
                                                    timeout=30).json()["branches"]]
-        profile = export_profile(args.start, args.hours, args.destination, args.model_dir or MODEL_DIR, order, args.name)
-        p = [x for h in profile["hours"] for x in h["failure_probability"]]
+        profile = export_profile(args.start, args.hours, args.destination, args.model_dir or MODEL_DIR, order, args.name, args.paired)
+        p = [x for h in profile["hours"] for x in h["full_probability" if args.paired else "failure_probability"]]
         result = {"destination": str(args.destination), "hours": len(profile["hours"]), "branches": len(profile["branch_ids"]),
                   "mean_probability": sum(p) / len(p), "max_probability": max(p)}
     elif args.command == "train":

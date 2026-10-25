@@ -10,7 +10,8 @@ from .weather import validate_weather, STORM_PRESETS
 from .decisions import validate_economics
 from .storm import run_storm
 from .benchmark import STORM_LIST, STORMS, run_real_storm
-from .planning import run_storm_plan
+from .planning import run_storm_plan, storm_context
+from .hybrid import validate_pair, settings, fragility_settings
 
 ROOT=Path(__file__).resolve().parents[1]
 app=Flask(__name__,static_folder=str(ROOT/'frontend/dist'),static_url_path='')
@@ -60,7 +61,20 @@ def storm_plan():
                 raise ValueError('custom_lines must contain GB branch IDs')
             if len(set(custom))!=len(custom): raise ValueError('Duplicate custom line IDs')
             if sum(nets['gb'].cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
-        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather)
+        failure_mode=data.get('failure_mode','engineering')
+        if failure_mode not in ('engineering','hybrid'): raise ValueError('failure_mode must be engineering or hybrid')
+        pair=data.get('hybrid_profile'); hybrid=settings(data.get('hybrid')); fragility=fragility_settings(data.get('fragility'))
+        if weather is not None and data.get('fragility') is not None and fragility!={'median_gust':265.,'dispersion':.12}:
+            raise ValueError('Imported probabilities already define fragility; change the source profile instead')
+        if failure_mode=='hybrid':
+            dates=([r['timestamp'] for r in weather['hours']] if weather is not None else
+                   [r['timestamp'] for r in storm_context(nets['gb'],scenario,params['peak_gust'],params['hours'],params['seed'],preset,**fragility)['planning_weather']['hours']])
+            validate_pair(pair,[e['id'] for e in nets['gb'].branches],dates)
+            if weather is not None and 'failure_probability' not in weather['hours'][0]:
+                raise ValueError('Hybrid imported weather must include engineering probabilities')
+        elif pair is not None: raise ValueError('Select hybrid mode to use paired predictions')
+        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather,
+                      failure_mode=failure_mode,hybrid_profile=pair,hybrid=hybrid,fragility=fragility)
     except (ValueError,BadRequest,UnsupportedMediaType) as exc:
         return jsonify({'error':str(exc)}),400
     if not experiment_lock.acquire(blocking=False):

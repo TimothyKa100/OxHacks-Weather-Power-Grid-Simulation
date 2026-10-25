@@ -1,3 +1,5 @@
+> Current specification: [MODEL_SPEC.md](MODEL_SPEC.md). This document retains earlier model/source details. Raw corridor exports are still display-only; the new explicit paired hybrid mode can affect simulated line failures. No unpublished transmission training results are claimed.
+
 # GB line-corridor outage-risk model (XGBoost)
 
 This model feeds hourly probabilities for every GB map branch into the existing

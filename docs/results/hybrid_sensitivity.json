@@ -1,0 +1,557 @@
+{
+  "evidence_status": "synthetic_fixture",
+  "network": "gb",
+  "buses": 303,
+  "branches": 367,
+  "storm_seed": 7,
+  "hours": 12,
+  "peak_gust_kmh": 190,
+  "purpose": "Integration/sensitivity only. No new empirical failure model or reference has been fitted to real data.",
+  "assumptions": "Wind and draws fixed across median/beta comparisons. Arbitrary synthetic residual pattern. No reinforcement in this sweep.",
+  "multiplier_bounds": [
+    0.5,
+    2.0
+  ],
+  "rows": [
+    {
+      "median_gust": 250,
+      "beta": 0,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 41429.71906250056,
+      "hybrid_mean_mwh": 41429.71906250056,
+      "mean_distinct_failed_lines": 67.375,
+      "engineering_mean_distinct_failed_lines": 67.375,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 0.5,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 41429.71906250056,
+      "hybrid_mean_mwh": 38358.11275000055,
+      "mean_distinct_failed_lines": 65.125,
+      "engineering_mean_distinct_failed_lines": 67.375,
+      "mean_additional_loss_mwh": -3071.6063125000023,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -3598.2082998352066,
+          9741.42092483521
+        ],
+        "fraction_scenarios_improved": 0.625,
+        "fraction_scenarios_worse": 0.375,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 1,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 41429.71906250056,
+      "hybrid_mean_mwh": 36977.68037500044,
+      "mean_distinct_failed_lines": 65.3125,
+      "engineering_mean_distinct_failed_lines": 67.375,
+      "mean_additional_loss_mwh": -4452.038687500126,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -2204.754722608962,
+          11108.832097609215
+        ],
+        "fraction_scenarios_improved": 0.6875,
+        "fraction_scenarios_worse": 0.3125,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 0,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 35186.23650000025,
+      "hybrid_mean_mwh": 35186.23650000025,
+      "mean_distinct_failed_lines": 67.0,
+      "engineering_mean_distinct_failed_lines": 67.0,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 0.5,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 35186.23650000025,
+      "hybrid_mean_mwh": 40383.99181250037,
+      "mean_distinct_failed_lines": 67.6875,
+      "engineering_mean_distinct_failed_lines": 67.0,
+      "mean_additional_loss_mwh": 5197.755312500125,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -10216.360744168127,
+          -179.14988083212393
+        ],
+        "fraction_scenarios_improved": 0.375,
+        "fraction_scenarios_worse": 0.625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 1,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 35186.23650000025,
+      "hybrid_mean_mwh": 40392.67187500037,
+      "mean_distinct_failed_lines": 67.4375,
+      "engineering_mean_distinct_failed_lines": 67.0,
+      "mean_additional_loss_mwh": 5206.435375000126,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -10599.559520491677,
+          186.6887704914243
+        ],
+        "fraction_scenarios_improved": 0.4375,
+        "fraction_scenarios_worse": 0.5625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 0,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 40395.086687501185,
+      "hybrid_mean_mwh": 40395.086687501185,
+      "mean_distinct_failed_lines": 66.9375,
+      "engineering_mean_distinct_failed_lines": 66.9375,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 0.5,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 40395.086687501185,
+      "hybrid_mean_mwh": 39634.49356250011,
+      "mean_distinct_failed_lines": 65.0625,
+      "engineering_mean_distinct_failed_lines": 66.9375,
+      "mean_additional_loss_mwh": -760.5931250010685,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -7064.000167805922,
+          8585.18641780806
+        ],
+        "fraction_scenarios_improved": 0.4375,
+        "fraction_scenarios_worse": 0.5625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 250,
+      "beta": 1,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 40395.086687501185,
+      "hybrid_mean_mwh": 40305.88612500037,
+      "mean_distinct_failed_lines": 65.1875,
+      "engineering_mean_distinct_failed_lines": 66.9375,
+      "mean_additional_loss_mwh": -89.20056250081257,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -7660.396457071141,
+          7838.797582072766
+        ],
+        "fraction_scenarios_improved": 0.375,
+        "fraction_scenarios_worse": 0.625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 27601.31650488893,
+      "hybrid_mean_mwh": 27601.31650488893,
+      "mean_distinct_failed_lines": 47.375,
+      "engineering_mean_distinct_failed_lines": 47.375,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0.5,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 27601.31650488893,
+      "hybrid_mean_mwh": 25060.83692941281,
+      "mean_distinct_failed_lines": 45.0,
+      "engineering_mean_distinct_failed_lines": 47.375,
+      "mean_additional_loss_mwh": -2540.4795754761217,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -3642.4210896561162,
+          8723.38024060836
+        ],
+        "fraction_scenarios_improved": 0.625,
+        "fraction_scenarios_worse": 0.375,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 1,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 27601.31650488893,
+      "hybrid_mean_mwh": 25263.147366912937,
+      "mean_distinct_failed_lines": 45.25,
+      "engineering_mean_distinct_failed_lines": 47.375,
+      "mean_additional_loss_mwh": -2338.169137975995,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -3792.2156040931186,
+          8468.553880045109
+        ],
+        "fraction_scenarios_improved": 0.5625,
+        "fraction_scenarios_worse": 0.4375,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 26452.395338460057,
+      "hybrid_mean_mwh": 26452.395338460057,
+      "mean_distinct_failed_lines": 48.875,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0.5,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 26452.395338460057,
+      "hybrid_mean_mwh": 25785.458395878,
+      "mean_distinct_failed_lines": 46.3125,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": -666.9369425820585,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -7390.135518084555,
+          8724.009403248672
+        ],
+        "fraction_scenarios_improved": 0.5,
+        "fraction_scenarios_worse": 0.5,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 1,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 26452.395338460057,
+      "hybrid_mean_mwh": 26239.203083377997,
+      "mean_distinct_failed_lines": 46.5,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": -213.19225508205773,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -7956.38705126184,
+          8382.771561425956
+        ],
+        "fraction_scenarios_improved": 0.5,
+        "fraction_scenarios_worse": 0.5,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 26072.5477136065,
+      "hybrid_mean_mwh": 26072.5477136065,
+      "mean_distinct_failed_lines": 48.875,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 0.5,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 26072.5477136065,
+      "hybrid_mean_mwh": 31569.044291568927,
+      "mean_distinct_failed_lines": 51.625,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": 5496.496577962428,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -13135.99269779183,
+          2142.9995418669723
+        ],
+        "fraction_scenarios_improved": 0.25,
+        "fraction_scenarios_worse": 0.75,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 265,
+      "beta": 1,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 26072.5477136065,
+      "hybrid_mean_mwh": 30136.98222418043,
+      "mean_distinct_failed_lines": 51.25,
+      "engineering_mean_distinct_failed_lines": 48.875,
+      "mean_additional_loss_mwh": 4064.43451057393,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -11719.077698916224,
+          3590.208677768365
+        ],
+        "fraction_scenarios_improved": 0.3125,
+        "fraction_scenarios_worse": 0.6875,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 3748.248187500185,
+      "hybrid_mean_mwh": 3748.248187500185,
+      "mean_distinct_failed_lines": 12.0,
+      "engineering_mean_distinct_failed_lines": 12.0,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0.5,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 3748.248187500185,
+      "hybrid_mean_mwh": 3873.0209423886845,
+      "mean_distinct_failed_lines": 13.6875,
+      "engineering_mean_distinct_failed_lines": 12.0,
+      "mean_additional_loss_mwh": 124.7727548885,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -1694.8166356476136,
+          1445.2711258706136
+        ],
+        "fraction_scenarios_improved": 0.125,
+        "fraction_scenarios_worse": 0.4375,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 1,
+      "failure_seed": 7,
+      "samples": 16,
+      "engineering_mean_mwh": 3748.248187500185,
+      "hybrid_mean_mwh": 4237.274067388689,
+      "mean_distinct_failed_lines": 15.4375,
+      "engineering_mean_distinct_failed_lines": 12.0,
+      "mean_additional_loss_mwh": 489.0258798885043,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -1973.885748560997,
+          995.8339887839884
+        ],
+        "fraction_scenarios_improved": 0.125,
+        "fraction_scenarios_worse": 0.5625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 2089.141437500063,
+      "hybrid_mean_mwh": 2089.141437500063,
+      "mean_distinct_failed_lines": 8.125,
+      "engineering_mean_distinct_failed_lines": 8.125,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0.5,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 2089.141437500063,
+      "hybrid_mean_mwh": 4349.876187500065,
+      "mean_distinct_failed_lines": 10.5625,
+      "engineering_mean_distinct_failed_lines": 8.125,
+      "mean_additional_loss_mwh": 2260.734750000001,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -4310.3026735769745,
+          -211.16682642302794
+        ],
+        "fraction_scenarios_improved": 0.0625,
+        "fraction_scenarios_worse": 0.5625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 1,
+      "failure_seed": 26,
+      "samples": 16,
+      "engineering_mean_mwh": 2089.141437500063,
+      "hybrid_mean_mwh": 4566.361812500064,
+      "mean_distinct_failed_lines": 10.9375,
+      "engineering_mean_distinct_failed_lines": 8.125,
+      "mean_additional_loss_mwh": 2477.2203750000003,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -4508.144844268477,
+          -446.29590573152404
+        ],
+        "fraction_scenarios_improved": 0.0625,
+        "fraction_scenarios_worse": 0.6875,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 1569.1225624999975,
+      "hybrid_mean_mwh": 1569.1225624999975,
+      "mean_distinct_failed_lines": 8.25,
+      "engineering_mean_distinct_failed_lines": 8.25,
+      "mean_additional_loss_mwh": 0.0,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          0.0,
+          0.0
+        ],
+        "fraction_scenarios_improved": 0.0,
+        "fraction_scenarios_worse": 0.0,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 0.5,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 1569.1225624999975,
+      "hybrid_mean_mwh": 4279.130428647371,
+      "mean_distinct_failed_lines": 11.9375,
+      "engineering_mean_distinct_failed_lines": 8.25,
+      "mean_additional_loss_mwh": 2710.0078661473735,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -5839.379605491529,
+          419.3638731967817
+        ],
+        "fraction_scenarios_improved": 0.0625,
+        "fraction_scenarios_worse": 0.4375,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    },
+    {
+      "median_gust": 300,
+      "beta": 1,
+      "failure_seed": 42,
+      "samples": 16,
+      "engineering_mean_mwh": 1569.1225624999975,
+      "hybrid_mean_mwh": 5847.04761614737,
+      "mean_distinct_failed_lines": 15.6875,
+      "engineering_mean_distinct_failed_lines": 8.25,
+      "mean_additional_loss_mwh": 4277.925053647372,
+      "paired_evidence": {
+        "gain_ci95_mwh": [
+          -7558.033393482639,
+          -997.8167138121048
+        ],
+        "fraction_scenarios_improved": 0.0625,
+        "fraction_scenarios_worse": 0.5625,
+        "interpretation": "Approximate Monte Carlo confidence interval for mean gain; excludes weather/model uncertainty"
+      }
+    }
+  ]
+}

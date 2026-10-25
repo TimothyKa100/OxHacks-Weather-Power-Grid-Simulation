@@ -96,6 +96,7 @@ def simulate(net, scenario, hardened=(), playback=False):
     dt=scenario.get('dt_hours',1.)
     peak_shed=0.; repairs=0; outage_hours=0.; last_outage_end=0.
     probabilities=np.zeros(net.m)
+    eligible=np.zeros(net.m,dtype=bool); weather_draws=np.zeros(net.m); sampled=np.zeros(net.m,dtype=bool)
     def state(hour,kind,new_trips=(),gust=None):
         nonlocal demand
         solution=net.solve(tuple(active),tuple(demand.round(9)))
@@ -110,6 +111,10 @@ def simulate(net, scenario, hardened=(), playback=False):
                 'failure_probability':np.asarray(probabilities).round(6).tolist(),
                 'timestamp':scenario.get('timestamps',[None]*len(scenario['gust']))[int(hour)-1] if hour else None,
                 'gust_kmh':gust.round(1).tolist() if gust is not None else [0.]*net.m})
+            if hour and 'hybrid_diagnostics' in scenario:
+                frames[-1]['probability_diagnostics']={**scenario['hybrid_diagnostics'][int(hour)-1],
+                    'applied_probability':probabilities.tolist(),'hardening_hazard_multiplier':np.where(hard,.25,1.).tolist(),
+                    'uniform_draw':weather_draws.tolist(),'eligible':eligible.tolist(),'sampled_weather_failure':sampled.tolist()}
         return ratios
     state(0,'Intact network')
     for t in range(len(scenario['gust'])):
@@ -131,7 +136,9 @@ def simulate(net, scenario, hardened=(), playback=False):
         if 'failure_probability' in scenario:
             # Supplied predictions are baseline one-hour conditional probabilities.
             probabilities=1.-(1.-scenario['failure_probability'][t])**np.where(hard,.25,1.)
-        weather=np.flatnonzero(active & (scenario['draws'][t]<probabilities))
+        eligible=active.copy(); weather_draws=scenario['draws'][t]
+        sampled=eligible & (weather_draws<probabilities)
+        weather=np.flatnonzero(sampled)
         for i in weather:
             active[i]=False; causes[i]='weather'; ever_failed[i]=True
             if recovery: repair_remaining[i]=scenario['repair_hours'][t,i]

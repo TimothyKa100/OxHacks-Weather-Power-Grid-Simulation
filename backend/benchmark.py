@@ -79,9 +79,10 @@ def spearman(a, b):
     return float(np.corrcoef(rank(a), rank(b))[0, 1]) if len(a) > 2 else float('nan')
 
 
-def run_real_storm(net, storm_id='darragh-2024', seed=1):
+def run_real_storm(net, storm_id='darragh-2024', seed=1, median_gust=265., dispersion=.12):
     storm = load_storm(storm_id)
     rng = np.random.default_rng(seed)
+    weather_rng = np.random.default_rng(seed)
     proj = Projection(net)
     samples = route_samples(net)
     hours = storm['hours']
@@ -96,9 +97,9 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     height = np.array([net.branches[i]['tower_height_m'] for i in samples['line']])
     terrain = altitude_factor(samples['ele'], height)/altitude_factor(np.maximum(s_model_ele, 0), height)
     sample_gust = np.nan_to_num(np.array([bilinear(gust_grid[t], lons, lats, s_lon, s_lat) for t in range(hours)]), nan=0.)
-    gust_at = lambda t: sample_gust[t]*terrain*rng.lognormal(0, GUSTINESS, len(s_lon))
+    gust_at = lambda t: sample_gust[t]*terrain*weather_rng.lognormal(0, GUSTINESS, len(s_lon))
 
-    frames, hazard = simulate_gusts(net, hours, gust_at, rng)
+    frames, hazard = simulate_gusts(net, hours, gust_at, rng,median_gust=median_gust,dispersion=dispersion)
 
     # Coverage: route samples inside cells where the outage feed has ever reported anything.
     size = storm['coverage_cell']; covered_cells = {tuple(c) for c in storm['coverage']}
@@ -141,9 +142,9 @@ def run_real_storm(net, storm_id='darragh-2024', seed=1):
     ox, oy = proj.xy([o[0] for o in storm['outages']], [o[1] for o in storm['outages']])
     cell_w, cell_h = step*proj.k, step/(proj.y1-proj.y0)
     cov_x, cov_y = proj.xy([(c[0]+.5)*size for c in storm['coverage']], [(c[1]+.5)*size for c in storm['coverage']])
-    return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net), 'frames': frames,
+    return {'config': {'scenario': storm_id, 'hours': hours, 'seed': seed}, 'model': model_info(net,median_gust,dispersion), 'frames': frames,
             'planning_weather':planning_exposure(net,frames,hazard,storm['timestamps'],
-                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility"),
+                f"Historical {storm['name']} weather replay; Met Office UKV via Open-Meteo; illustrative route/pylon fragility",median_gust,dispersion),
             'storm': {'id': storm_id, 'name': storm['name'], 'operator': storm['operator'], 'operators': storm['operators'], 'sources': storm['sources'],
                       'timestamps': storm['timestamps'], 'reissued_dropped': storm['reissued_dropped']},
             'weather': {'nodes': np.round(np.column_stack([nx, ny]), 5).tolist(), 'cell': [round(cell_w, 5), round(cell_h, 5)],

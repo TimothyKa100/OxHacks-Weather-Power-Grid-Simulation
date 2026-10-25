@@ -57,7 +57,7 @@ def validate_weather(profile, branches):
     supplied_predictions = [isinstance(row, dict) and 'failure_probability' in row for row in hours]
     prediction_dates = {}
     engineering = profile.get('engineering_model')
-    if engineering is not None and (not isinstance(engineering,dict) or engineering.get('name')!='route-pylon-v1'):
+    if engineering is not None and (not isinstance(engineering,dict) or engineering.get('name') not in ('route-pylon-v1','hybrid-hazard-v1')):
         raise ValueError('Unknown engineering probability model')
     if any(supplied_predictions):
         if not all(supplied_predictions): raise ValueError('Supply failure_probability for every hour or none')
@@ -147,7 +147,9 @@ def multiday_scenarios(network, intensity, seed, count, hours=48, weather=None, 
                    timestamps=timestamps, dt_hours=1., crews=crews, recovery=True) for i in range(count)]
     if weather is not None and 'failure_probability' in rows[0]:
         probabilities = np.array([row['failure_probability'] for row in rows])
-        for scenario in result: scenario['failure_probability'] = probabilities
+        for scenario in result:
+            scenario['failure_probability'] = probabilities
+            if 'hybrid_diagnostics' in rows[0]: scenario['hybrid_diagnostics']=[row['hybrid_diagnostics'] for row in rows]
     return result
 
 

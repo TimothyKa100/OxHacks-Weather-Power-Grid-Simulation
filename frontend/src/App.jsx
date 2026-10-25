@@ -30,6 +30,9 @@ export default function App() {
   const [economics,setEconomics]=useState({cost_per_unit_gbp:10000,outage_value_gbp_per_mwh:1000,expected_events:1,asset_costs_gbp:{}});
   const [playing,setPlaying]=useState(false);
   const [importedWeather,setImportedWeather]=useState(null);
+  const [failureMode,setFailureMode]=useState('engineering'),[hybridProfile,setHybridProfile]=useState(null);
+  const [hybrid,setHybrid]=useState({beta:.5,min_multiplier:.5,max_multiplier:2});
+  const [fragility,setFragility]=useState({median_gust:265,dispersion:.12});
   // Corridor outage-risk layer: drawn beside the engineering line model, never simulated.
   const [riskLayers,setRiskLayers]=useState([]);
   const [riskId,setRiskId]=useState('');
@@ -124,7 +127,7 @@ export default function App() {
     try {
       let result;
       try {
-        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null};
+        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null,failure_mode:failureMode,hybrid_profile:failureMode==='hybrid'?hybridProfile:null,hybrid,fragility};
         result = await simulate(parameters.scenario,parameters);
         setOffline(false);
       } catch (err) {
@@ -139,7 +142,7 @@ export default function App() {
       setT(0);
       setRun(result);
       setPolicy(nextPolicy);setPlaying(true);
-      if(request&&result.plan){setScenario(result.config.scenario);setImportedWeather(result.replay.request.weather);setConfig(c=>Object.fromEntries(Object.keys(c).map(k=>[k,result.config[k]])))}
+      if(request&&result.plan){setScenario(result.config.scenario);setImportedWeather(result.replay.request.weather);setFailureMode(result.config.failure_mode||'engineering');setHybridProfile(result.config.hybrid_profile||null);setHybrid(result.config.hybrid||hybrid);setFragility(result.config.fragility||fragility);setConfig(c=>Object.fromEntries(Object.keys(c).map(k=>[k,result.config[k]])))}
       if(result.plan){setDraft(result.plan.portfolios.custom?.selected||result.plan.portfolios.optimized.selected);setEconomics(result.plan.config.economics)}
     } catch (err) {
       setError(err.message);
@@ -190,7 +193,8 @@ export default function App() {
             {busy ? 'Comparing plans…' : 'Simulate & compare'}
           </button>
         </div>
-        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());if(profile.prediction_unit==='line_corridor_area_risk'){loadRiskFile(profile);setError('');return}setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());if(profile.prediction_unit==='paired_risk_modifier'){setHybridProfile(profile);setFailureMode('hybrid');setError('');return}if(profile.prediction_unit==='line_corridor_area_risk'){loadRiskFile(profile);setError('');return}setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        <details className="scenario-settings"><summary>Failure model: engineering or experimental hybrid</summary><div className="financial-fields"><label>Simulation probability<select aria-label="Simulation probability" value={failureMode} disabled={busy} onChange={e=>setFailureMode(e.target.value)}><option value="engineering">Engineering baseline</option><option value="hybrid">Experimental hybrid hazard</option></select></label>{Object.entries(hybrid).map(([key,value])=><label key={key}>{key}<input type="number" step="0.05" min={key==='beta'?0:key==='min_multiplier'?.05:1} max={key==='beta'?2:key==='min_multiplier'?1:10} value={value} onChange={e=>setHybrid(h=>({...h,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}{Object.entries(fragility).map(([key,value])=><label key={key}>Assumed {key}<input type="number" min={key==='median_gust'?150:.02} max={key==='median_gust'?500:1} step={key==='median_gust'?5:.01} disabled={scenario==='imported'} value={value} onChange={e=>setFragility(f=>({...f,[key]:e.target.value===''?'':Number(e.target.value)}))}/></label>)}</div><p className="note">Import a paired_risk_modifier JSON using the importer above. Its hours must match the selected storm exactly. {hybridProfile?`Loaded ${hybridProfile.prediction?.model_version} and its reference.`:'No paired model loaded.'} Raw corridor layers remain display-only. Hybrid settings are scenario assumptions, not fitted transmission calibration.</p></details>
         <div className="risk-layer">
           <label htmlFor="risk">Corridor outage risk</label>
           <select id="risk" value={riskId} onChange={e => chooseRisk(e.target.value)}>
@@ -231,7 +235,7 @@ export default function App() {
           {run?.storm && <> · Gusts: Met Office UKV via Open-Meteo.com (CC BY 4.0), © Crown copyright</>}
         </p>
       </div>
-      <DecisionPanel run={run} policy={policy} setPolicy={key=>{setPlaying(false);setPolicy(key)}} draft={draft} setDraft={setDraft} economics={economics} setEconomics={setEconomics} busy={busy} asset={asset} setAsset={setAsset} rerun={()=>onSimulate(sameStormRequest(run,draft,economics),'custom')}/>
+      <DecisionPanel run={run} policy={policy} setPolicy={key=>{setPlaying(false);setPolicy(key)}} draft={draft} setDraft={setDraft} economics={economics} setEconomics={setEconomics} busy={busy} asset={asset} setAsset={setAsset} diagnostics={timeline?.frames[frameIndexAt(timeline,t)]?.probability_diagnostics} rerun={()=>onSimulate(sameStormRequest(run,draft,economics),'custom')}/>
     </main>
   );
 }

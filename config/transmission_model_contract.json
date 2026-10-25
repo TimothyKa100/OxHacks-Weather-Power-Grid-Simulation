@@ -1,0 +1,11 @@
+{
+  "target": "transmission_weather_failure",
+  "evidence_status": "assumed_target",
+  "source": "Pending unpublished operator-linked asset-hour data; feature and target contract only, not an observed dataset",
+  "information_mode": "retrospective_replay",
+  "features": [
+    "gust_max_kmh", "gust_p95_kmh", "gust_prev_3h_max_kmh", "crosswind_max_kmh",
+    "rain_1h_mm", "rain_prev_24h_mm", "temperature_c", "length_km", "ele_mean_m",
+    "ele_max_m", "kv", "circuits"
+  ]
+}
