@@ -9,6 +9,10 @@ export function project(lon, lat) {
   return [(lon - bounds.lon_min) * cosLat * scale, (bounds.lat_max - lat) * scale];
 }
 
+export function unproject(x, y) {
+  return [x / (cosLat * scale) + bounds.lon_min, bounds.lat_max - y / scale];
+}
+
 const hasLatLon = p => Number.isFinite(p?.lat) && Number.isFinite(p?.lon);
 
 export function isGeographic(buses) {

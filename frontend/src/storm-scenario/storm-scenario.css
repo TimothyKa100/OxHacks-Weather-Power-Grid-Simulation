@@ -1,0 +1,18 @@
+.storm-editor{width:100%;margin:8px 0;padding:16px;border:1px solid #425465;border-radius:12px;text-align:left;color:#dce8f1;background:#151d25;font:inherit;min-width:0}
+.storm-editor legend{padding:0 8px;font-size:16px;font-weight:650}
+.storm-editor__row{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.storm-editor label{display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0}
+.storm-editor input,.storm-editor select,.storm-editor button{font:inherit;color:#e6eef4;background:#101820;border:1px solid #4a5a68;border-radius:6px;padding:9px;min-height:40px;max-width:100%;width:100%}
+.storm-editor button{width:auto;cursor:pointer;font-size:13px}
+.storm-editor button[aria-pressed=true]{border-color:#b5dd87;background:#2c4331}
+.storm-editor__fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.storm-editor__hint{font-size:12px;line-height:1.5;color:#aabccc;margin:10px 0 0}
+.storm-editor__error{font-size:13px;color:#ffb9b9}
+.storm-editor summary{font-size:13px;cursor:pointer;margin-top:12px}
+.storm-editor:disabled{opacity:.65}
+.storm-track [role=slider]{cursor:crosshair;touch-action:none}
+.storm-track [role=slider]:focus-visible{outline:2px solid #b5dd87}
+.uk-map[data-placing=true],.uk-map[data-placing=true]:active{cursor:crosshair}
+.controls button:not(.simulate){padding:10px 14px;border:1px solid #46596d;border-radius:999px;background:#253342;color:#e5edf4;font:inherit;font-size:14px;cursor:pointer}
+.controls button:disabled{opacity:.55;cursor:wait}
+@media(max-width:600px){.storm-editor__fields{grid-template-columns:repeat(2,minmax(0,1fr))}.storm-editor{padding:12px}.storm-editor__row>label{flex:1 0 100%}}

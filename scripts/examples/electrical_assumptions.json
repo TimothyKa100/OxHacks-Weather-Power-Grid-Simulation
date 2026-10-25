@@ -1,0 +1,9 @@
+{
+  "power_factor": 1.0,
+  "nominal_taps": true,
+  "total_load_mw": 50,
+  "demand_weights": {"substation-132": 2, "substation-33": 3},
+  "line_types": {
+    "example-132kv-conductor": {"r_ohm_per_km": 0.1, "x_ohm_per_km": 0.3, "max_i_ka": 0.8}
+  }
+}

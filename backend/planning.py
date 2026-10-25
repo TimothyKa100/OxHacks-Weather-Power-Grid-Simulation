@@ -3,6 +3,9 @@ from functools import lru_cache
 from .benchmark import STORMS, run_real_storm
 from .storm import run_storm
 from .simulation import run_experiment
+from .scenario_adapter import scenario_context
+from .storm_scenarios import validate_scenario
+import json
 
 
 def map_frames(playback, context):
@@ -24,9 +27,13 @@ def map_frames(playback, context):
 
 def run_storm_plan(net, scenario='synthetic', peak_gust=160, hours=36, seed=1,
                    storm_type='single_peak', samples=16, budget=5, crews=6,
-                   custom_lines=None, economics=None, weather=None):
+                   custom_lines=None, economics=None, weather=None, storm_config=None):
     imported=weather is not None
+    if storm_config is not None:
+        storm_config=validate_scenario(storm_config)
+        peak_gust,hours,seed,storm_type=(storm_config[k] for k in ('peak_gust_kmh','hours','seed','preset'))
     context=({'network':net.payload(),'frames':[],'input_source':weather['source']} if imported
+             else scenario_context(net,json.dumps(storm_config,sort_keys=True)) if storm_config is not None
              else storm_context(net,scenario,peak_gust,hours,seed,storm_type))
     exposures=weather if imported else context['planning_weather']
     plan=run_experiment(net,seed=seed,samples=samples,budget=budget,mode='multiday',
@@ -35,6 +42,7 @@ def run_storm_plan(net, scenario='synthetic', peak_gust=160, hours=36, seed=1,
     descriptor=dict(scenario=scenario,peak_gust=peak_gust,hours=len(exposures['hours']),seed=seed,
                     storm_type=storm_type,samples=samples,budget=budget,crews=crews,
                     custom_lines=custom_lines,economics=plan['config']['economics'],weather=weather)
+    if storm_config is not None: descriptor['storm_config']=storm_config
     plan['model']['weather']=exposures['source']
     if 'engineering_model' in exposures:
         plan['model']['failure_model']='Route/pylon engineering hourly probabilities; assumed hardening hazard multiplier 0.25'

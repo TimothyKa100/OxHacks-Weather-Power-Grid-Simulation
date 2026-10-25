@@ -14,6 +14,9 @@ from .decisions import validate_economics
 from .storm import run_storm
 from .benchmark import STORM_LIST, STORMS, run_real_storm
 from .planning import run_storm_plan
+from .storm_scenarios import validate_scenario, DEFAULT_SCENARIO, PRESETS, LIMITS
+from .scenario_adapter import run_scenario
+from .scenario_jobs import ScenarioJobs, JobCapacityError
 
 ROOT=Path(__file__).resolve().parents[1]
 app=Flask(__name__,static_folder=str(ROOT/'frontend/dist'),static_url_path='')
@@ -22,6 +25,7 @@ app.register_blueprint(grid_blueprint)
 app.register_blueprint(catalog_blueprint)
 nets={name:Network(name) for name in NETWORKS}
 experiment_lock=Lock()
+scenario_jobs=ScenarioJobs()
 
 @lru_cache(maxsize=12)
 def cached_experiment(network,request_json):
@@ -62,41 +66,60 @@ def probability_experiment(data):
     finally:
         experiment_lock.release()
 
+def validate_storm_plan(data):
+    """Shared validation for synchronous compatibility and asynchronous scenario jobs."""
+    if not isinstance(data,dict): raise ValueError('Expected a JSON object')
+    unknown=set(data)-{'scenario','weather','peak_gust','hours','seed','samples','budget','crews',
+                       'storm_type','economics','custom_lines','storm_config'}
+    if unknown: raise ValueError('Unsupported storm plan fields: '+', '.join(sorted(unknown)))
+    scenario=data.get('scenario','synthetic')
+    weather=data.get('weather')
+    if not isinstance(scenario,str) or (scenario not in ('synthetic','imported') and scenario not in STORMS):
+        raise ValueError('Unknown storm scenario')
+    storm_config=data.get('storm_config')
+    if storm_config is not None:
+        if scenario!='synthetic': raise ValueError('storm_config requires scenario=synthetic')
+        storm_config=validate_scenario(storm_config)
+    if (scenario=='imported')!=(weather is not None): raise ValueError('Imported scenario requires a weather profile; other scenarios use their own weather')
+    if weather is not None:
+        validate_weather(weather,nets['gb'].m)
+        if 'branch_ids' in weather and weather['branch_ids'] != [e['id'] for e in nets['gb'].branches]:
+            raise ValueError('Weather branch_ids must match the GB network branch order')
+    def integer(key,default,low,high):
+        value=data.get(key,default)
+        if isinstance(value,bool) or not isinstance(value,int) or not low<=value<=high:
+            raise ValueError(f'{key} must be an integer between {low} and {high}')
+        return value
+    scenario_fields={'peak_gust':'peak_gust_kmh','hours':'hours','seed':'seed'}
+    params={key:(storm_config[scenario_fields[key]] if storm_config is not None and key in scenario_fields
+                 else integer(key,*bounds)) for key,bounds in {
+        'peak_gust':(160,60,250),'hours':(36,1 if weather is not None else 6,72),'seed':(1,0,2147483647),
+        'samples':(16,16,128),'budget':(5,0,12),'crews':(6,1,40)}.items()}
+    preset=data.get('storm_type','single_peak')
+    if not isinstance(preset,str) or preset not in STORM_PRESETS: raise ValueError('Unknown storm preset')
+    economics=validate_economics(data.get('economics'))
+    ids={e['id']:i for i,e in enumerate(nets['gb'].branches)}
+    if set(economics['asset_costs_gbp'])-set(ids): raise ValueError('Unknown asset cost IDs')
+    custom=data.get('custom_lines')
+    if custom is not None:
+        if not isinstance(custom,list) or any(not isinstance(i,str) or i not in ids for i in custom):
+            raise ValueError('custom_lines must contain GB branch IDs')
+        if len(set(custom))!=len(custom): raise ValueError('Duplicate custom line IDs')
+        if sum(nets['gb'].cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
+    if storm_config is not None:
+        preset=storm_config['preset']
+    params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather)
+    if storm_config is not None: params['storm_config']=storm_config
+    return params
+
+
 @app.post('/api/storm-plan')
 def storm_plan():
     try:
         data=request.get_json()
         if not isinstance(data,dict): raise ValueError('Expected a JSON object')
         if is_probability_import(data): return probability_experiment(data)
-        scenario=data.get('scenario','synthetic')
-        weather=data.get('weather')
-        if not isinstance(scenario,str) or (scenario not in ('synthetic','imported') and scenario not in STORMS):
-            raise ValueError('Unknown storm scenario')
-        if (scenario=='imported')!=(weather is not None): raise ValueError('Imported scenario requires a weather profile; other scenarios use their own weather')
-        if weather is not None:
-            validate_weather(weather,nets['gb'].m)
-            if 'branch_ids' in weather and weather['branch_ids'] != [e['id'] for e in nets['gb'].branches]:
-                raise ValueError('Weather branch_ids must match the GB network branch order')
-        def integer(key,default,low,high):
-            value=data.get(key,default)
-            if isinstance(value,bool) or not isinstance(value,int) or not low<=value<=high:
-                raise ValueError(f'{key} must be an integer between {low} and {high}')
-            return value
-        params={key:integer(key,*bounds) for key,bounds in {
-            'peak_gust':(160,60,250),'hours':(36,1 if weather is not None else 6,72),'seed':(1,0,2147483647),
-            'samples':(16,16,128),'budget':(5,0,12),'crews':(6,1,40)}.items()}
-        preset=data.get('storm_type','single_peak')
-        if not isinstance(preset,str) or preset not in STORM_PRESETS: raise ValueError('Unknown storm preset')
-        economics=validate_economics(data.get('economics'))
-        ids={e['id']:i for i,e in enumerate(nets['gb'].branches)}
-        if set(economics['asset_costs_gbp'])-set(ids): raise ValueError('Unknown asset cost IDs')
-        custom=data.get('custom_lines')
-        if custom is not None:
-            if not isinstance(custom,list) or any(not isinstance(i,str) or i not in ids for i in custom):
-                raise ValueError('custom_lines must contain GB branch IDs')
-            if len(set(custom))!=len(custom): raise ValueError('Duplicate custom line IDs')
-            if sum(nets['gb'].cost[ids[i]] for i in custom)>params['budget']: raise ValueError('Custom plan exceeds budget')
-        params.update(scenario=scenario,storm_type=preset,economics=economics,custom_lines=custom,weather=weather)
+        params=validate_storm_plan(data)
     except (ValueError,BadRequest,UnsupportedMediaType) as exc:
         return jsonify({'error':str(exc)}),400
     if not experiment_lock.acquire(blocking=False):
@@ -105,6 +128,55 @@ def storm_plan():
         return jsonify(cached_storm_plan(json.dumps(params,sort_keys=True)))
     finally:
         experiment_lock.release()
+
+
+@app.get('/api/storm-scenarios')
+def storm_scenario_contract():
+    return jsonify(version=1, defaults=DEFAULT_SCENARIO, presets=PRESETS, limits=LIMITS,
+                   coordinates='WGS84 longitude/latitude', warmup_hours=72)
+
+
+@app.post('/api/storm-scenarios/runs')
+def create_scenario_run():
+    try:
+        data=request.get_json()
+        if not isinstance(data,dict): raise ValueError('Expected a JSON object')
+        mode=data.get('mode','single')
+        if mode not in ('single','compare'): raise ValueError('mode must be single or compare')
+        if mode=='single':
+            unknown=set(data)-{'mode','storm_config','crews'}
+            if unknown: raise ValueError('Unsupported run fields: '+', '.join(sorted(unknown)))
+            config=validate_scenario(data.get('storm_config'))
+            crews=data.get('crews',6)
+            if type(crews) is not int or not 1<=crews<=40: raise ValueError('crews must be an integer between 1 and 40')
+            params={'storm_config':config,'crews':crews}
+        else:
+            params=validate_storm_plan({k:v for k,v in data.items() if k!='mode'})
+        cache_key=json.dumps({'mode':mode,**params},sort_keys=True)
+        def operation():
+            # Share the existing solver cache safely with all compatibility endpoints.
+            with experiment_lock:
+                return (run_scenario(nets['gb'],**params) if mode=='single'
+                        else cached_storm_plan(json.dumps(params,sort_keys=True)))
+        job_id=scenario_jobs.submit(operation,cache_key=cache_key)
+    except (ValueError,BadRequest,UnsupportedMediaType) as exc:
+        return jsonify(error=str(exc)),400
+    except JobCapacityError as exc:
+        return jsonify(error=str(exc)),429
+    response=jsonify(job_id=job_id,status_url=f'/api/storm-scenarios/runs/{job_id}')
+    response.status_code=202
+    response.headers['Location']=f'/api/storm-scenarios/runs/{job_id}'
+    response.headers['Cache-Control']='no-store'
+    return response
+
+
+@app.get('/api/storm-scenarios/runs/<job_id>')
+def get_scenario_run(job_id):
+    job=scenario_jobs.get(job_id)
+    if job is None: return jsonify(error='Storm run expired or was not found. Submit it again.'),404
+    response=jsonify(job_id=job_id,**job)
+    response.headers['Cache-Control']='no-store'
+    return response
 
 @app.get('/api/health')
 def health(): return jsonify({'status':'ok','networks':list(NETWORKS),'model':'DC','weather':'synthetic'})

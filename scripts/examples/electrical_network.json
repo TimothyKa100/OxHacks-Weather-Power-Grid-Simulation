@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {"id": "plant", "type": "generation", "voltage_kv": 132, "load_mw": 0, "generation_capacity_mw": 100, "generation_mw": 50},
+    {"id": "pylon-1", "type": "pylon"},
+    {"id": "pylon-2", "type": "pylon"},
+    {"id": "substation-132", "type": "substation", "voltage_kv": 132},
+    {"id": "substation-33", "type": "substation"}
+  ],
+  "edges": [
+    {"id": "line-a", "source": "plant", "target": "pylon-1", "length_km": 10, "line_type": "example-132kv-conductor"},
+    {"id": "line-b", "source": "pylon-1", "target": "pylon-2", "length_km": 5, "line_type": "example-132kv-conductor"},
+    {"id": "line-c", "source": "pylon-2", "target": "substation-132", "length_km": 15, "line_type": "example-132kv-conductor"},
+    {"id": "transformer", "type": "transformer", "source": "substation-132", "target": "substation-33", "hv_bus": "substation-132", "lv_bus": "substation-33", "hv_kv": 132, "lv_kv": 33, "sn_mva": 60, "vk_percent": 10, "vkr_percent": 1}
+  ]
+}

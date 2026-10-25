@@ -1,11 +1,17 @@
-import React, {useEffect, useMemo, useState} from 'react';
-import {OfflineError, fetchStorms, loadSample, simulate} from './api.js';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {OfflineError, fetchStorms, loadSample} from './api.js';
 import {checkRun, checkNetwork} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
 import StormChart from './StormChart.jsx';
 import DecisionPanel from './DecisionPanel.jsx';
 import {portfolioRun, sameStormRequest, portfolioNames} from './planning.js';
+import StormControls from './storm-scenario/StormControls.jsx';
+import {useStormScenario} from './storm-scenario/useStormScenario.js';
+import {checkStorm} from './storm-scenario/config.js';
+import {createStormClient, StormConnectionError} from './storm-scenario/client.js';
+
+const stormClient = createStormClient();
 
 const PLAYBACK_MS = 22000; // a whole storm plays in about this long
 const TICK_MS = 1000 / 30;
@@ -30,6 +36,18 @@ export default function App() {
   const [economics,setEconomics]=useState({cost_per_unit_gbp:10000,outage_value_gbp_per_mwh:1000,expected_events:1,asset_costs_gbp:{}});
   const [playing,setPlaying]=useState(false);
   const [importedWeather,setImportedWeather]=useState(null);
+  const storm = useStormScenario();
+  const changeStorm = useCallback(value => {setPlaying(false);storm.setConfig(value);}, [storm.setConfig]);
+  const changePlacement = useCallback(value => {setPlaying(false);storm.setPlacement(value);}, [storm.setPlacement]);
+  const [jobStatus, setJobStatus] = useState('');
+  const [busyMode, setBusyMode] = useState(null);
+  const activeRequest = useRef(null);
+  useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => {
+    const pauseHidden = () => {if (document.hidden) setPlaying(false);};
+    document.addEventListener('visibilitychange', pauseHidden);
+    return () => document.removeEventListener('visibilitychange', pauseHidden);
+  }, []);
   const shown=useMemo(()=>portfolioRun(run,policy),[run,policy]);
   const update=(key,value)=>setConfig(c=>({...c,[key]:value}));
 
@@ -74,34 +92,38 @@ export default function App() {
     return () => clearInterval(id);
   }, [timeline,playing]);
 
-  async function onSimulate(request=null,nextPolicy='none') {
-    setBusy(true);
+  async function onSimulate(request=null,nextPolicy='none',mode='compare') {
+    if (busy) return;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setBusy(true);setBusyMode(mode);setJobStatus('queued');
+    storm.setPlacement(null);
     setError('');
     setPlaying(false);
     try {
-      let result;
-      try {
-        const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null};
-        result = await simulate(parameters.scenario,parameters);
-        setOffline(false);
-      } catch (err) {
-        if (!(err instanceof OfflineError)) throw err;
-        setOffline(true);
-        if (request || scenario !== SYNTHETIC) throw new Error('Storm planning needs the backend running.');
-        result = await loadSample();
+      const parameters=request||{...config,scenario,economics,weather:scenario==='imported'?importedWeather:null,
+        ...(scenario===SYNTHETIC?{storm_config:storm.config}:{} )};
+      if (parameters.storm_config) {
+        const problem=checkStorm(parameters.storm_config);
+        if(problem)throw new Error(problem);
       }
+      const payload=mode==='single'?{storm_config:parameters.storm_config,crews:parameters.crews}:parameters;
+      const result=await stormClient.run(payload,{mode,signal:controller.signal,onStatus:setJobStatus});
+      setOffline(false);
       const problem = checkRun(result);
       if (problem) throw new Error(`Unexpected simulation data: ${problem}`);
       setNetwork(result.network);
       setT(0);
       setRun(result);
       setPolicy(nextPolicy);setPlaying(true);
-      if(request&&result.plan){setScenario(result.config.scenario);setImportedWeather(result.replay.request.weather);setConfig(c=>Object.fromEntries(Object.keys(c).map(k=>[k,result.config[k]])))}
+      if(request&&result.plan){setScenario(result.config.scenario);setImportedWeather(result.replay.request.weather);setConfig(c=>({...c,...Object.fromEntries(Object.keys(c).filter(k=>result.config[k]!==undefined).map(k=>[k,result.config[k]]))}));if(result.config.storm_config)storm.setConfig(result.config.storm_config)}
       if(result.plan){setDraft(result.plan.portfolios.custom?.selected||result.plan.portfolios.optimized.selected);setEconomics(result.plan.config.economics)}
     } catch (err) {
-      setError(err.message);
+      if (err instanceof StormConnectionError) setOffline(true);
+      if (err.name !== 'AbortError') setError(err.name === 'TimeoutError' ? 'Storm run timed out. Reduce the duration or number of scenarios and retry.' : err.message);
     } finally {
-      setBusy(false);
+      if (activeRequest.current === controller) {setBusy(false);setBusyMode(null);}
     }
   }
 
@@ -127,7 +149,8 @@ export default function App() {
   return (
     <main className="page">
       <div className="map-wrap">
-        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} /> : !error && <p className="note">Loading grid…</p>}
+        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset}
+          stormEditor={scenario===SYNTHETIC&&!playing?{config:storm.config,onChange:storm.setConfig,placement:storm.placement,onPlace:storm.place,disabled:busy}:null} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
       <div className="panel">
@@ -143,12 +166,23 @@ export default function App() {
               </option>
             ))}
           </select>
-          <button type="button" className="simulate" onClick={()=>onSimulate()} disabled={busy || !network}>
-            {busy ? 'Comparing plans…' : 'Simulate & compare'}
+          {scenario===SYNTHETIC&&<button type="button" className="simulate" onClick={()=>onSimulate(null,'none','single')} disabled={busy || !network || !!checkStorm(storm.config)}>
+            {busy&&busyMode==='single'?'Simulating…':'Simulate storm'}
+          </button>}
+          <button type="button" className={scenario===SYNTHETIC?'':'simulate'} onClick={()=>onSimulate()} disabled={busy || !network || (scenario===SYNTHETIC&&!!checkStorm(storm.config))}>
+            {busy&&busyMode==='compare'?'Comparing plans…':'Compare mitigation'}
           </button>
         </div>
-        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
-        {timeline&&<div className="playback-controls"><button onClick={()=>{if(t>=timeline.end)setT(0);setPlaying(p=>!p)}}>{playing?'Pause':'Play'}</button><input aria-label="Storm playback hour" type="range" min="0" max={timeline.end} step="0.05" value={t} onChange={e=>{setPlaying(false);setT(Number(e.target.value))}}/><span>{portfolioNames[policy]||'Sample'}</span><button onClick={()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(run,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='gridguard-gb-plan.json';a.click();URL.revokeObjectURL(url)}}>Export</button></div>}
+        {scenario===SYNTHETIC&&<StormControls value={storm.config} onChange={changeStorm} placement={storm.placement}
+          onPlacementChange={changePlacement} message={storm.message} disabled={busy}/>}
+        {busy&&<p className="note" role="status">{jobStatus==='queued'?'Queued on the simulation server…':'Running on the simulation server…'} {busyMode==='compare'?'Evaluating reinforcement and repair plans.':'Calculating hourly weather, failures and repairs.'}</p>}
+        <details className="scenario-settings"><summary>Planning settings and weather import</summary><div className="financial-fields">
+          {[['crews','Repair crews',1,40],['budget','Budget units',0,12],...(scenario===SYNTHETIC?[]:[['seed','Random seed',0,2147483647]])].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}
+          <label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label>
+        </div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label>
+          <p className="note">Simulate storm runs one realization. Compare mitigation evaluates a bank of scenarios. Applying a plan reuses the completed comparison’s storm and seed.</p>
+        </details>
+        {timeline&&<div className="playback-controls"><button onClick={()=>{if(t>=timeline.end)setT(0);setPlaying(p=>!p)}}>{playing?'Pause':'Play'}</button><input aria-label="Storm playback hour" type="range" min="0" max={timeline.end} step="0.05" value={t} onChange={e=>{setPlaying(false);setT(Number(e.target.value))}}/><span>{run?.plan?(portfolioNames[policy]||'Plan'):'Single run'}</span><button onClick={()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(run,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='gridguard-gb-plan.json';a.click();URL.revokeObjectURL(url)}}>Export</button></div>}
         {run?.storm && timeline ? (
           <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />
         ) : (
@@ -167,7 +201,7 @@ export default function App() {
             {error}
           </p>
         )}
-        {offline && <p className="note">Backend offline: using the legacy sample animation. Mitigation comparison is unavailable until the backend is running.</p>}
+        {offline && <p className="note">Simulation server unavailable. Start the backend to run your storm or compare mitigation plans.</p>}
         <p className="credit">
           Grid © OpenStreetMap contributors (ODbL) via uk-grid-atlas
           {run?.storm && <> · Gusts: Met Office UKV via Open-Meteo.com (CC BY 4.0), © Crown copyright</>}

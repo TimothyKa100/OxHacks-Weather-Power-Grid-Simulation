@@ -1,5 +1,6 @@
 import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {mapFrame, outline} from './geo.js';
+import {mapFrame, outline, project, unproject} from './geo.js';
+import StormTrackOverlay from './storm-scenario/StormTrackOverlay.jsx';
 import {flashesAt, gustsAt, layerTime, mix, stateAt, stormAt} from './timeline.js';
 
 const LINE = {400: '#a9bccb', 275: '#8399aa', 132: '#617888'};
@@ -15,11 +16,17 @@ const MAX_ZOOM = 12;
 const DRAG_PX = 4;
 // The map frame is at least this wide (a little wider than the storm controls), so a zoomed view isn't a narrow strip.
 const MIN_MAP_WIDTH = 480;
+const ATLANTIC_PAD = 260;
+const projectStorm = ([lon, lat]) => {const [x, y] = project(lon, lat);return [x + ATLANTIC_PAD, y];};
+const unprojectStorm = ([x, y]) => unproject(x - ATLANTIC_PAD, y);
 
 // Everything is drawn from the simulation clock t, not CSS transitions, so the
 // map always shows exactly the state at time t.
-export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect}) {
-  const geo = useMemo(() => mapFrame(network.buses), [network]);
+export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, stormEditor}) {
+  const geo = useMemo(() => {
+    const frame = mapFrame(network.buses);
+    return {...frame, px: (x, y) => {const p = frame.px(x, y);return [p[0] + ATLANTIC_PAD, p[1]];}};
+  }, [network]);
   const shapes = useMemo(() => {
     const index = new Map(network.buses.map((b, i) => [b.id, i]));
     const buses = network.buses.map(b => geo.px(b.x, b.y));
@@ -36,14 +43,22 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
   const state = timeline ? stateAt(timeline, t) : null;
   const fadeStep = state ? quantize(state.fade, 0.1) : 1;
   const storm = timeline ? stormAt(timeline, t) : null;
-  const {wrapRef, svgRef, box, view, zoomBy, reset} = useZoom(outline.width, outline.height);
+  const {wrapRef, svgRef, box, view, zoomBy, reset} = useZoom(outline.width + ATLANTIC_PAD, outline.height);
   // Marks grow slower than the zoom so detail separates instead of just getting bigger.
   const s = view.k ** -0.75;
+  const placeStorm = event => {
+    if (!stormEditor?.placement || stormEditor.disabled) return;
+    const svg = svgRef.current;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    const land = svg.querySelector('.land');
+    const isLand = land.isPointInFill(new DOMPoint(point.x - ATLANTIC_PAD, point.y));
+    stormEditor.onPlace(unprojectStorm([point.x, point.y]), isLand);
+  };
 
   return (
     <div className="uk-map-zoom" ref={wrapRef}>
     <div className="uk-map-box" style={box ? {width: box.w, height: box.h} : undefined}>
-    <svg ref={svgRef} className="uk-map" viewBox={view.box.join(' ')} role="img" aria-label="Map of the GB transmission grid">
+    <svg ref={svgRef} className="uk-map" viewBox={view.box.join(' ')} role="group" aria-label="Interactive map of the GB transmission grid" data-placing={!!stormEditor?.placement} onClick={placeStorm}>
       <defs>
         <radialGradient id="storm">
           <stop offset="0" stopColor="#9fb7cc" stopOpacity="0.45" />
@@ -51,7 +66,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
           <stop offset="1" stopColor="#7b95aa" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <path d={outline.path} className="land" />
+      <path d={outline.path} className="land" transform={`translate(${ATLANTIC_PAD} 0)`}/>
       {run?.coverage && <Coverage coverage={run.coverage} geo={geo} />}
       {run?.weather && timeline && <GustField weather={run.weather} geo={geo} t={layerTime(t)} />}
       {storm && (
@@ -64,7 +79,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
           pointerEvents="none"
         />
       )}
-      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} s={s} />
+      <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={stormEditor?.placement ? undefined : onSelect} s={s} />
       <Buses network={network} positions={shapes.buses} state={state} fadeStep={fadeStep} s={s} />
       {run?.outages && timeline && <Outages outages={run.outages} times={timeline.outageTimes} geo={geo} t={layerTime(t)} s={s} />}
       {timeline &&
@@ -84,6 +99,8 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
             />
           );
         })}
+      {stormEditor && <StormTrackOverlay config={stormEditor.config} project={projectStorm} unproject={unprojectStorm}
+        onChange={stormEditor.onChange} disabled={stormEditor.disabled} scale={s}/>}
     </svg>
       <div className="zoom-controls">
         <button type="button" onClick={() => zoomBy(2)} disabled={view.k >= MAX_ZOOM} aria-label="Zoom in">+</button>

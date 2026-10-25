@@ -2,6 +2,16 @@
 
 A GB storm map with multi-day failure, repair and mitigation decisions: weather → line risk → DC cascades → restoration → investment comparison.
 
+**Interactive storm creation:** open `/#storm`, place a storm in the ocean, choose
+its type and direction, then run a single simulation or compare mitigation plans.
+Weather generation and simulation run on the server. The editor, HTTP client and
+weather generator are reusable modules; see [the storm scenario integration guide](docs/STORM_SCENARIOS.md).
+
+**Graph electrical properties:** the standalone
+[`enrich_network_electrical.py`](scripts/enrich_network_electrical.py) script derives
+nominal voltage, impedance and ratings from JSON or SQLite graphs, with provenance
+and explicit assumptions. See [usage and portable graph mappings](docs/NETWORK_ENRICHMENT.md).
+
 The interface combines the geographic map from `feature/gb-storm-map` with the simulation and decision support from `feature/multiday-weather-recovery`.
 
 - **Map:** 303 substations and 367 transmission branches at 132–400 kV, using OSM routes and terrain via uk-grid-atlas. Electrical parameters, generation dispatch and demand allocation remain illustrative.
