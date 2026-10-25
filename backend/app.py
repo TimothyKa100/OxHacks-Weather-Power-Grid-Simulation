@@ -85,6 +85,34 @@ def storms():
     fields=('id','name','start','hours','operators','outages','peak_gust_kmh')
     return jsonify({'storms':[{k:s.get(k) for k in fields} for s in STORM_LIST],'network':nets['gb'].payload()})
 
+RISK_DIR=ROOT/'data/failure_model/exports'
+
+def corridor_risk_files():
+    """Exports from `python -m failure_model gb-export` (area-level corridor risk), keyed by file stem."""
+    files={}
+    for path in sorted(RISK_DIR.glob('*.json')):
+        try: profile=json.loads(path.read_text(encoding='utf-8'))
+        except (OSError,ValueError): continue
+        if isinstance(profile,dict) and profile.get('prediction_unit')=='line_corridor_area_risk':
+            files[path.stem]=profile
+    return files
+
+@app.get('/api/corridor-risk')
+def corridor_risk():
+    """A display layer only: these probabilities never enter the line-failure simulation."""
+    files=corridor_risk_files()
+    layer=request.args.get('id')
+    if layer is None:
+        return jsonify({'layers':[{'id':k,'name':p.get('name') or k,'start':p['hours'][0]['timestamp'],'hours':len(p['hours']),
+                                   'model_version':p['prediction']['model_version']} for k,p in files.items()]})
+    if layer not in files: return jsonify({'error':'Unknown corridor-risk layer'}),404
+    p=files[layer]
+    if p.get('branch_ids')!=[e['id'] for e in nets['gb'].branches]:
+        return jsonify({'error':'Layer branch order does not match the GB network; re-export it'}),409
+    return jsonify({'id':layer,'name':p.get('name') or layer,'source':p['source'],'prediction':p['prediction'],
+                    'timestamps':[h['timestamp'] for h in p['hours']],
+                    'probability':[h['failure_probability'] for h in p['hours']]})
+
 @app.post('/api/storm')
 def storm():
     data=request.get_json(silent=True)

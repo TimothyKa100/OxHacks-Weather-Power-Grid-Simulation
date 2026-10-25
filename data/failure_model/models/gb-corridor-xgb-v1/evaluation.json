@@ -1,0 +1,648 @@
+{
+  "calibrated_xgboost": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1892.2704074268986,
+    "brier_score": 0.0010411754590238587,
+    "log_loss": 0.006500537911372414,
+    "average_precision": 0.07629390669518957,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 9.816168361404948,
+    "recall_at_threshold": 0.40836653386454186,
+    "brier_skill_vs_training_rate": 0.042215980538848674,
+    "reliability": [
+      {
+        "lower": 0,
+        "upper": 0.0001,
+        "rows": 409799,
+        "mean_probability": 5.547844193642959e-05,
+        "observed_frequency": 5.1244634564750036e-05
+      },
+      {
+        "lower": 0.0001,
+        "upper": 0.0003,
+        "rows": 516940,
+        "mean_probability": 0.0001864828955149278,
+        "observed_frequency": 0.0001837737455023794
+      },
+      {
+        "lower": 0.0003,
+        "upper": 0.001,
+        "rows": 542361,
+        "mean_probability": 0.0005622770404443145,
+        "observed_frequency": 0.0005512933267694395
+      },
+      {
+        "lower": 0.001,
+        "upper": 0.003,
+        "rows": 278251,
+        "mean_probability": 0.0016646746080368757,
+        "observed_frequency": 0.0015130224150137826
+      },
+      {
+        "lower": 0.003,
+        "upper": 0.01,
+        "rows": 78937,
+        "mean_probability": 0.004852870479226112,
+        "observed_frequency": 0.004459252315137388
+      },
+      {
+        "lower": 0.01,
+        "upper": 0.03,
+        "rows": 13666,
+        "mean_probability": 0.01615707390010357,
+        "observed_frequency": 0.019830235621249817
+      },
+      {
+        "lower": 0.03,
+        "upper": 0.1,
+        "rows": 4246,
+        "mean_probability": 0.051492031663656235,
+        "observed_frequency": 0.07206782854451248
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.3,
+        "rows": 923,
+        "mean_probability": 0.15853910148143768,
+        "observed_frequency": 0.22643553629469124
+      },
+      {
+        "lower": 0.3,
+        "upper": 1.0,
+        "rows": 98,
+        "mean_probability": 0.3687763214111328,
+        "observed_frequency": 0.3469387755102041
+      }
+    ],
+    "storm_hours": {
+      "rows": 98915,
+      "events": 950,
+      "event_frequency": 0.009604205631097406,
+      "expected_events": 545.0541072587948,
+      "brier_score": 0.00888461885430398,
+      "log_loss": 0.04302184223124321,
+      "average_precision": 0.1342457123129933,
+      "alert_threshold": 0.01,
+      "false_alerts_per_1000_asset_hours": 94.62669969165445,
+      "recall_at_threshold": 0.6684210526315789
+    },
+    "quiet_hours": {
+      "rows": 1746306,
+      "events": 1058,
+      "event_frequency": 0.000605850291987773,
+      "expected_events": 1347.2163001681038,
+      "brier_score": 0.0005969038345524696,
+      "log_loss": 0.004431882809231083,
+      "average_precision": 0.02796648601165905,
+      "alert_threshold": 0.01,
+      "false_alerts_per_1000_asset_hours": 5.012294523411132,
+      "recall_at_threshold": 0.17485822306238186
+    },
+    "by_kv": {
+      "132": {
+        "rows": 1162742,
+        "events": 887,
+        "event_frequency": 0.0007628519482395923,
+        "expected_events": 703.4351772895825,
+        "brier_score": 0.0007356063927719888,
+        "log_loss": 0.004767775689787453,
+        "average_precision": 0.07737383876422704,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 5.212678306967496,
+        "recall_at_threshold": 0.3686583990980834
+      },
+      "275": {
+        "rows": 379155,
+        "events": 500,
+        "event_frequency": 0.0013187218947396185,
+        "expected_events": 490.1265789923855,
+        "brier_score": 0.0012353441799445616,
+        "log_loss": 0.007483981759086389,
+        "average_precision": 0.11467581824674881,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 13.155569621922433,
+        "recall_at_threshold": 0.454
+      },
+      "400": {
+        "rows": 303324,
+        "events": 621,
+        "event_frequency": 0.0020473157415832575,
+        "expected_events": 698.7086511449306,
+        "brier_score": 0.001969812645171814,
+        "log_loss": 0.011913488284472298,
+        "average_precision": 0.06603949571354835,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 23.28862866110166,
+        "recall_at_threshold": 0.428341384863124
+      }
+    },
+    "storm_totals": [
+      {
+        "storm_id": "wind-20251003",
+        "rows": 5694,
+        "events": 175,
+        "expected_events": 57.38014221191406,
+        "brier_sum": 161.3643798828125
+      },
+      {
+        "storm_id": "wind-20250804",
+        "rows": 4161,
+        "events": 147,
+        "expected_events": 34.846282958984375,
+        "brier_sum": 128.72216796875
+      },
+      {
+        "storm_id": "wind-20250124",
+        "rows": 5183,
+        "events": 111,
+        "expected_events": 44.88931655883789,
+        "brier_sum": 102.10377502441406
+      },
+      {
+        "storm_id": "wind-20240121",
+        "rows": 8103,
+        "events": 111,
+        "expected_events": 67.82720184326172,
+        "brier_sum": 105.96688079833984
+      },
+      {
+        "storm_id": "wind-20231227",
+        "rows": 4526,
+        "events": 107,
+        "expected_events": 45.555213928222656,
+        "brier_sum": 90.0789794921875
+      },
+      {
+        "storm_id": "wind-20241124",
+        "rows": 4453,
+        "events": 41,
+        "expected_events": 53.536285400390625,
+        "brier_sum": 39.69684600830078
+      },
+      {
+        "storm_id": "wind-20260311",
+        "rows": 5621,
+        "events": 34,
+        "expected_events": 23.662019729614258,
+        "brier_sum": 31.629837036132812
+      },
+      {
+        "storm_id": "wind-20241020",
+        "rows": 4234,
+        "events": 34,
+        "expected_events": 22.974853515625,
+        "brier_sum": 33.36511993408203
+      },
+      {
+        "storm_id": "wind-20241221",
+        "rows": 5548,
+        "events": 31,
+        "expected_events": 18.757173538208008,
+        "brier_sum": 30.08334732055664
+      },
+      {
+        "storm_id": "wind-20251209",
+        "rows": 5183,
+        "events": 25,
+        "expected_events": 15.218398094177246,
+        "brier_sum": 23.921520233154297
+      },
+      {
+        "storm_id": "wind-20250221",
+        "rows": 7300,
+        "events": 18,
+        "expected_events": 18.747737884521484,
+        "brier_sum": 17.828468322753906
+      },
+      {
+        "storm_id": "wind-20231224",
+        "rows": 3942,
+        "events": 18,
+        "expected_events": 12.188265800476074,
+        "brier_sum": 17.901845932006836
+      },
+      {
+        "storm_id": "wind-20240131",
+        "rows": 3577,
+        "events": 18,
+        "expected_events": 16.226627349853516,
+        "brier_sum": 16.507125854492188
+      },
+      {
+        "storm_id": "wind-20231220",
+        "rows": 4453,
+        "events": 17,
+        "expected_events": 17.640869140625,
+        "brier_sum": 16.636951446533203
+      },
+      {
+        "storm_id": "wind-20260127",
+        "rows": 3650,
+        "events": 17,
+        "expected_events": 20.854658126831055,
+        "brier_sum": 16.56130599975586
+      },
+      {
+        "storm_id": "wind-20260405",
+        "rows": 3723,
+        "events": 16,
+        "expected_events": 15.563615798950195,
+        "brier_sum": 15.39169979095459
+      },
+      {
+        "storm_id": "wind-20240407",
+        "rows": 3869,
+        "events": 11,
+        "expected_events": 14.869263648986816,
+        "brier_sum": 11.275891304016113
+      },
+      {
+        "storm_id": "wind-20251127",
+        "rows": 4964,
+        "events": 10,
+        "expected_events": 16.405467987060547,
+        "brier_sum": 9.816553115844727
+      },
+      {
+        "storm_id": "wind-20260112",
+        "rows": 3577,
+        "events": 8,
+        "expected_events": 19.154329299926758,
+        "brier_sum": 8.916099548339844
+      },
+      {
+        "storm_id": "wind-20250329",
+        "rows": 3577,
+        "events": 1,
+        "expected_events": 3.7928109169006348,
+        "brier_sum": 1.0014294385910034
+      },
+      {
+        "storm_id": "wind-20260324",
+        "rows": 3577,
+        "events": 0,
+        "expected_events": 4.963581085205078,
+        "brier_sum": 0.05185353383421898
+      }
+    ],
+    "brier_group_bootstrap_95_interval": [
+      0.0007458506527505175,
+      0.001437229173343206
+    ]
+  },
+  "uncalibrated_xgboost": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1587.267631895615,
+    "brier_score": 0.0010415337587434967,
+    "log_loss": 0.006516099705746322,
+    "average_precision": 0.07629390675983777,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 8.301986591308033,
+    "recall_at_threshold": 0.3894422310756972,
+    "brier_skill_vs_training_rate": 0.041886378316022155,
+    "reliability": [
+      {
+        "lower": 0,
+        "upper": 0.0001,
+        "rows": 568034,
+        "mean_probability": 4.946468834532425e-05,
+        "observed_frequency": 6.865786202938557e-05
+      },
+      {
+        "lower": 0.0001,
+        "upper": 0.0003,
+        "rows": 515590,
+        "mean_probability": 0.0001827491505537182,
+        "observed_frequency": 0.00024631975018910376
+      },
+      {
+        "lower": 0.0003,
+        "upper": 0.001,
+        "rows": 474104,
+        "mean_probability": 0.0005574710667133331,
+        "observed_frequency": 0.0006981590537097345
+      },
+      {
+        "lower": 0.001,
+        "upper": 0.003,
+        "rows": 213783,
+        "mean_probability": 0.0016497434116899967,
+        "observed_frequency": 0.0018663785240173446
+      },
+      {
+        "lower": 0.003,
+        "upper": 0.01,
+        "rows": 57609,
+        "mean_probability": 0.004889694973826408,
+        "observed_frequency": 0.0057282716242253815
+      },
+      {
+        "lower": 0.01,
+        "upper": 0.03,
+        "rows": 11241,
+        "mean_probability": 0.016254847869277,
+        "observed_frequency": 0.02224001423360911
+      },
+      {
+        "lower": 0.03,
+        "upper": 0.1,
+        "rows": 3862,
+        "mean_probability": 0.05163511261343956,
+        "observed_frequency": 0.0753495598135681
+      },
+      {
+        "lower": 0.1,
+        "upper": 0.3,
+        "rows": 888,
+        "mean_probability": 0.16053487360477448,
+        "observed_frequency": 0.22747747747747749
+      },
+      {
+        "lower": 0.3,
+        "upper": 1.0,
+        "rows": 110,
+        "mean_probability": 0.3779917359352112,
+        "observed_frequency": 0.35454545454545455
+      }
+    ],
+    "storm_hours": {
+      "rows": 98915,
+      "events": 950,
+      "event_frequency": 0.009604205631097406,
+      "expected_events": 504.7546208936287,
+      "brier_score": 0.008894058199148996,
+      "log_loss": 0.04362632188772416,
+      "average_precision": 0.13424571231299323,
+      "alert_threshold": 0.01,
+      "false_alerts_per_1000_asset_hours": 83.86998938482536,
+      "recall_at_threshold": 0.6357894736842106
+    },
+    "quiet_hours": {
+      "rows": 1746306,
+      "events": 1058,
+      "event_frequency": 0.000605850291987773,
+      "expected_events": 1082.5130110019863,
+      "brier_score": 0.0005967477618891597,
+      "log_loss": 0.0044140868700060015,
+      "average_precision": 0.027966486025085033,
+      "alert_threshold": 0.01,
+      "false_alerts_per_1000_asset_hours": 4.021631947665529,
+      "recall_at_threshold": 0.16824196597353497
+    },
+    "by_kv": {
+      "132": {
+        "rows": 1162742,
+        "events": 887,
+        "event_frequency": 0.0007628519482395923,
+        "expected_events": 571.3743853933597,
+        "brier_score": 0.0007359290984811711,
+        "log_loss": 0.004798633768862148,
+        "average_precision": 0.07737383876422704,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 4.3414618204210385,
+        "recall_at_threshold": 0.3382187147688839
+      },
+      "275": {
+        "rows": 379155,
+        "events": 500,
+        "event_frequency": 0.0013187218947396185,
+        "expected_events": 415.0109853181748,
+        "brier_score": 0.0012348558988408967,
+        "log_loss": 0.007480872279844705,
+        "average_precision": 0.1146758182467488,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 11.08781369097071,
+        "recall_at_threshold": 0.448
+      },
+      "400": {
+        "rows": 303324,
+        "events": 621,
+        "event_frequency": 0.0020473157415832575,
+        "expected_events": 600.8822611840806,
+        "brier_score": 0.001971365614627328,
+        "log_loss": 0.011893753412846014,
+        "average_precision": 0.06603949603262445,
+        "alert_threshold": 0.01,
+        "false_alerts_per_1000_asset_hours": 20.00171433846316,
+        "recall_at_threshold": 0.41545893719806765
+      }
+    },
+    "storm_totals": [
+      {
+        "storm_id": "wind-20251003",
+        "rows": 5694,
+        "events": 175,
+        "expected_events": 54.17295455932617,
+        "brier_sum": 161.56297302246094
+      },
+      {
+        "storm_id": "wind-20250804",
+        "rows": 4161,
+        "events": 147,
+        "expected_events": 32.94125747680664,
+        "brier_sum": 128.78543090820312
+      },
+      {
+        "storm_id": "wind-20250124",
+        "rows": 5183,
+        "events": 111,
+        "expected_events": 42.18603515625,
+        "brier_sum": 102.2175521850586
+      },
+      {
+        "storm_id": "wind-20240121",
+        "rows": 8103,
+        "events": 111,
+        "expected_events": 63.70016860961914,
+        "brier_sum": 106.12258911132812
+      },
+      {
+        "storm_id": "wind-20231227",
+        "rows": 4526,
+        "events": 107,
+        "expected_events": 44.46040344238281,
+        "brier_sum": 90.00003051757812
+      },
+      {
+        "storm_id": "wind-20241124",
+        "rows": 4453,
+        "events": 41,
+        "expected_events": 52.44497299194336,
+        "brier_sum": 40.05421447753906
+      },
+      {
+        "storm_id": "wind-20260311",
+        "rows": 5621,
+        "events": 34,
+        "expected_events": 21.241439819335938,
+        "brier_sum": 31.634450912475586
+      },
+      {
+        "storm_id": "wind-20241020",
+        "rows": 4234,
+        "events": 34,
+        "expected_events": 21.35715103149414,
+        "brier_sum": 33.40061569213867
+      },
+      {
+        "storm_id": "wind-20241221",
+        "rows": 5548,
+        "events": 31,
+        "expected_events": 16.31877326965332,
+        "brier_sum": 30.112110137939453
+      },
+      {
+        "storm_id": "wind-20251209",
+        "rows": 5183,
+        "events": 25,
+        "expected_events": 13.253776550292969,
+        "brier_sum": 23.962451934814453
+      },
+      {
+        "storm_id": "wind-20250221",
+        "rows": 7300,
+        "events": 18,
+        "expected_events": 16.35273551940918,
+        "brier_sum": 17.840986251831055
+      },
+      {
+        "storm_id": "wind-20231224",
+        "rows": 3942,
+        "events": 18,
+        "expected_events": 10.604432106018066,
+        "brier_sum": 17.915544509887695
+      },
+      {
+        "storm_id": "wind-20240131",
+        "rows": 3577,
+        "events": 18,
+        "expected_events": 14.8713960647583,
+        "brier_sum": 16.530231475830078
+      },
+      {
+        "storm_id": "wind-20231220",
+        "rows": 4453,
+        "events": 17,
+        "expected_events": 15.66542911529541,
+        "brier_sum": 16.63589096069336
+      },
+      {
+        "storm_id": "wind-20260127",
+        "rows": 3650,
+        "events": 17,
+        "expected_events": 18.75688362121582,
+        "brier_sum": 16.55124282836914
+      },
+      {
+        "storm_id": "wind-20260405",
+        "rows": 3723,
+        "events": 16,
+        "expected_events": 14.221322059631348,
+        "brier_sum": 15.397455215454102
+      },
+      {
+        "storm_id": "wind-20240407",
+        "rows": 3869,
+        "events": 11,
+        "expected_events": 13.12082576751709,
+        "brier_sum": 11.273663520812988
+      },
+      {
+        "storm_id": "wind-20251127",
+        "rows": 4964,
+        "events": 10,
+        "expected_events": 14.407685279846191,
+        "brier_sum": 9.803906440734863
+      },
+      {
+        "storm_id": "wind-20260112",
+        "rows": 3577,
+        "events": 8,
+        "expected_events": 17.519454956054688,
+        "brier_sum": 8.912540435791016
+      },
+      {
+        "storm_id": "wind-20250329",
+        "rows": 3577,
+        "events": 1,
+        "expected_events": 3.036959648132324,
+        "brier_sum": 0.9992684721946716
+      },
+      {
+        "storm_id": "wind-20260324",
+        "rows": 3577,
+        "events": 0,
+        "expected_events": 4.12056303024292,
+        "brier_sum": 0.042614538222551346
+      }
+    ],
+    "brier_group_bootstrap_95_interval": [
+      0.0007460257826751415,
+      0.0014379387158073907
+    ]
+  },
+  "training_rate_baseline": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1664.0618791083875,
+    "brier_score": 0.0010870670609117318,
+    "log_loss": 0.008530834706623282,
+    "average_precision": 0.001088216533412529,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 0.0,
+    "recall_at_threshold": 0.0
+  },
+  "wind_logistic_baseline": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1577.4631715748396,
+    "brier_score": 0.0010669605302601865,
+    "log_loss": 0.007020781571887799,
+    "average_precision": 0.04312280219824077,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 8.094423378012715,
+    "recall_at_threshold": 0.33266932270916333
+  },
+  "ablation_spec_uncalibrated_test": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1587.267631895615,
+    "brier_score": 0.0010415337587434967,
+    "log_loss": 0.006516099705746322,
+    "average_precision": 0.07629390675983777,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 8.301986591308033,
+    "recall_at_threshold": 0.3894422310756972
+  },
+  "ablation_spec+vegetation_uncalibrated_test": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1621.47918308905,
+    "brier_score": 0.001040444420519246,
+    "log_loss": 0.006503461939525798,
+    "average_precision": 0.07729812257009465,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 7.87981493815646,
+    "recall_at_threshold": 0.3884462151394422
+  },
+  "ablation_spec+derived_uncalibrated_test": {
+    "rows": 1845221,
+    "events": 2008,
+    "event_frequency": 0.001088216533412529,
+    "expected_events": 1593.771561890072,
+    "brier_score": 0.001040762699610513,
+    "log_loss": 0.006512752909656147,
+    "average_precision": 0.07758404080238032,
+    "alert_threshold": 0.01,
+    "false_alerts_per_1000_asset_hours": 8.057571423693965,
+    "recall_at_threshold": 0.3844621513944223
+  }
+}

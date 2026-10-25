@@ -34,6 +34,10 @@ The script clusters OSM line endpoints within 2 km into substations, merges para
 
 The same endpoint compares reinforcement plans on shared storms: no action, two simple baselines, the greedy GridGuard selection, an optional `custom_lines` plan and, in multi-day mode, a `prepared` plan that reorders the repair queue. Each plan gets paired evidence and an illustrative cost/benefit from editable `economics` assumptions; `storm_type` picks one of three windstorm presets. On the GB grid, only the 24 most frequently failing lines are evaluated individually. See [decision assumptions](docs/DECISION_SUPPORT.md) and [map/ML integration and evaluation](docs/TEAM_INTEGRATION.md).
 
+## Failure-probability model (XGBoost)
+
+`failure_model/` trains a calibrated XGBoost model of hourly weather-caused outage risk in each GB line's 5 km corridor. It uses SSEN's 2015–2026 fault register and ERA5 route weather (fetched on demand for any GB window), with the first 75% of hours for development and the last 25% for testing. `python -m failure_model gb-export` writes a layer that the map shows as purple corridor-risk halos (**Corridor outage risk** picker), alongside the engineering line model. The probabilities are **area-level outage risk, not verified transmission-line failures**, so the simulator refuses them as line-failure inputs. See [GB_LINE_MODEL.md](docs/GB_LINE_MODEL.md). The data comes from the `dataRefininf` archive, extracted into `data/` (git-ignored); install `requirements-model.txt`.
+
 ## Reliable web preview
 
 From the repository root, install frontend dependencies once (`cd frontend`, `npm ci`, then `cd ..`). With Python requirements already installed, start the built frontend and API together:

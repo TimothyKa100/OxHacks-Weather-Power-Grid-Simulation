@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {OfflineError, fetchStorms, loadSample, simulate} from './api.js';
+import {OfflineError, fetchRiskLayer, fetchRiskLayers, fetchStorms, loadSample, simulate} from './api.js';
 import {checkRun, checkNetwork} from './schema.js';
 import {buildTimeline, frameIndexAt, layerTime} from './timeline.js';
 import UkMap from './UkMap.jsx';
@@ -30,6 +30,10 @@ export default function App() {
   const [economics,setEconomics]=useState({cost_per_unit_gbp:10000,outage_value_gbp_per_mwh:1000,expected_events:1,asset_costs_gbp:{}});
   const [playing,setPlaying]=useState(false);
   const [importedWeather,setImportedWeather]=useState(null);
+  // Corridor outage-risk layer: drawn beside the engineering line model, never simulated.
+  const [riskLayers,setRiskLayers]=useState([]);
+  const [riskId,setRiskId]=useState('');
+  const [riskLayer,setRiskLayer]=useState(null);
   const shown=useMemo(()=>portfolioRun(run,policy),[run,policy]);
   // The map frame is exactly as wide as the storm picker and Simulate button.
   const controlsRef=useRef(null);
@@ -69,6 +73,33 @@ export default function App() {
   }, []);
 
   const timeline = useMemo(() => (shown ? buildTimeline(shown) : null), [shown]);
+
+  useEffect(() => { fetchRiskLayers().then(r => setRiskLayers(r.layers || [])).catch(() => {}); }, []);
+  async function chooseRisk(id) {
+    setRiskId(id);
+    if (!id) return setRiskLayer(null);
+    try { setRiskLayer(await fetchRiskLayer(id)); } catch (err) { setRiskLayer(null); setError(err.message); }
+  }
+  function loadRiskFile(profile) {
+    const ids = network?.branches.map(b => b.id) || [];
+    if (JSON.stringify(profile.branch_ids) !== JSON.stringify(ids)) throw new Error('Corridor-risk file branch order does not match the GB network.');
+    setRiskId('file');
+    setRiskLayer({id: 'file', name: profile.name || 'Imported corridor risk', source: profile.source, prediction: profile.prediction,
+                  timestamps: profile.hours.map(h => h.timestamp), probability: profile.hours.map(h => h.failure_probability)});
+  }
+  // The run's clock at the playback hour, matched to the layer's hours; otherwise the storm total.
+  const runStart = run?.storm?.timestamps?.[0] ?? run?.frames?.find(f => f.hour === 1)?.timestamp;
+  const riskHour = timeline ? Math.min(timeline.lastHour, Math.max(0, Math.floor(t))) : null;
+  const riskView = useMemo(() => {
+    if (!riskLayer) return null;
+    if (riskHour !== null && runStart) {
+      const at = Date.parse(runStart) + riskHour * 3600e3;
+      const i = riskLayer.timestamps.findIndex(x => Date.parse(x) === at);
+      if (i >= 0) return {values: riskLayer.probability[i], mode: 'hour', at: riskLayer.timestamps[i]};
+    }
+    const values = riskLayer.probability[0].map((_, b) => 1 - riskLayer.probability.reduce((q, row) => q * (1 - row[b]), 1));
+    return {values, mode: 'total'};
+  }, [riskLayer, riskHour, runStart]);
 
   // Advance a continuous clock until the storm has passed. Time comes from
   // performance.now(), so motion stays smooth even if ticks are delayed. A timer
@@ -139,7 +170,7 @@ export default function App() {
   return (
     <main className="page">
       <div className="map-wrap" style={mapWidth ? {width: mapWidth} : undefined}>
-        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} /> : !error && <p className="note">Loading grid…</p>}
+        {network ? <UkMap network={network} run={shown} timeline={timeline} t={t} hardened={run?.plan?.portfolios[policy]?.selected} selected={asset} onSelect={setAsset} risk={riskView?.values} /> : !error && <p className="note">Loading grid…</p>}
       </div>
 
       <div className="panel">
@@ -159,7 +190,22 @@ export default function App() {
             {busy ? 'Comparing plans…' : 'Simulate & compare'}
           </button>
         </div>
-        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        <details className="scenario-settings"><summary>Scenario and planning settings</summary><div className="financial-fields">{[['seed','Random seed',0,2147483647],['hours','Synthetic hours',6,72],['peak_gust','Synthetic peak gust km/h',60,250],['crews','Repair crews',1,40],['budget','Budget units',0,12]].map(([key,label,min,max])=><label key={key}>{label}<input type="number" min={min} max={max} disabled={busy||(scenario!==SYNTHETIC&&['hours','peak_gust'].includes(key))} value={config[key]} onChange={e=>update(key,e.target.value===''?'':Number(e.target.value))}/></label>)}<label>Held-out scenarios<select value={config.samples} disabled={busy} onChange={e=>update('samples',Number(e.target.value))}>{[16,32,64,128].map(n=><option key={n}>{n}</option>)}</select></label><label>Synthetic preset<select value={config.storm_type} disabled={busy||scenario!==SYNTHETIC} onChange={e=>update('storm_type',e.target.value)}><option value="single_peak">Single wind peak</option><option value="persistent">Persistent winds</option><option value="double_peak">Two wind peaks</option></select></label></div><label>Import GB hourly weather / ML JSON<input type="file" accept=".json,application/json" disabled={busy} onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{const profile=JSON.parse(await file.text());if(profile.prediction_unit==='line_corridor_area_risk'){loadRiskFile(profile);setError('');return}setImportedWeather(profile);setScenario('imported');setError('')}catch{setError('Choose a valid weather JSON file.')}}}/></label><p className="note">Settings take effect on Simulate & compare. Applying a mitigation plan uses the completed storm’s settings and seed.</p></details>
+        <div className="risk-layer">
+          <label htmlFor="risk">Corridor outage risk</label>
+          <select id="risk" value={riskId} onChange={e => chooseRisk(e.target.value)}>
+            <option value="">Off</option>
+            {riskLayers.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            {riskId === 'file' && <option value="file">{riskLayer?.name}</option>}
+          </select>
+        </div>
+        {riskView && (
+          <p className="note risk-legend">
+            <span className="risk-ramp" aria-hidden="true" />
+            {riskView.mode === 'hour' ? `Hourly corridor outage risk at ${clock(riskView.at)} UTC` : 'Storm-total corridor outage risk (run hours don’t overlap this layer)'}
+            {' '}· purple halos, 0.01%→30%. Area-level risk of a distribution fault within 5 km ({riskLayer.prediction.model_version}); shown alongside the engineering line model, not used as line-failure probability.
+          </p>
+        )}
         {timeline&&<div className="playback-controls"><button onClick={()=>{if(t>=timeline.end)setT(0);setPlaying(p=>!p)}}>{playing?'Pause':'Play'}</button><input aria-label="Storm playback hour" type="range" min="0" max={timeline.end} step="0.05" value={t} onChange={e=>{setPlaying(false);setT(Number(e.target.value))}}/><span>{portfolioNames[policy]||'Sample'}</span><button onClick={()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(run,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='gridguard-gb-plan.json';a.click();URL.revokeObjectURL(url)}}>Export</button></div>}
         {run?.storm && timeline ? (
           <StormChart benchmark={run.benchmark} timestamps={run.storm.timestamps} t={t} />

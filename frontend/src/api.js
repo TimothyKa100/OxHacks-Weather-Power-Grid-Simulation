@@ -36,6 +36,10 @@ export function simulate(scenario, options = {}) {
   }, 300000);
 }
 
+// Corridor outage-risk layers (display only; never sent to the simulator).
+export const fetchRiskLayers = () => request('/api/corridor-risk', {}, 5000);
+export const fetchRiskLayer = id => request(`/api/corridor-risk?id=${encodeURIComponent(id)}`, {}, 30000);
+
 export async function loadSample() {
   const module = await import('../../data/sample_storm.json');
   return module.default;

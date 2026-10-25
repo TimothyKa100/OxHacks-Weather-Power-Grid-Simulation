@@ -20,6 +20,11 @@ can be imported via the map using the GB branch order below. See
 
 ## ML teammate: one-hour operating-asset probabilities
 
+The GB line-corridor XGBoost model (`python -m failure_model gb-export`) uses this hourly format, but its probabilities are **area-level corridor
+outage risk** learned from SSEN distribution faults, not verified transmission-line
+failures. They are shown on the map as a separate corridor-risk layer, and the importer refuses them
+as line-failure inputs. See [GB_LINE_MODEL.md](GB_LINE_MODEL.md) for the target, data, split and results.
+
 Use the weather import/API payload from MULTIDAY.md. Optionally supply predictions:
 
 - `branch_ids`: every branch ID in exactly `/api/network` order (L01–L20 for IEEE14; use `GET /api/network?name=gb` for the GB map).

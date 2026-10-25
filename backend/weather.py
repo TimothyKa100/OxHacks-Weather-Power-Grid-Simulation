@@ -48,6 +48,8 @@ def validate_weather(profile, branches):
     from datetime import datetime, timezone, timedelta
     if not isinstance(profile, dict) or not isinstance(profile.get('source'), str) or not profile['source'].strip():
         raise ValueError('weather requires a source description')
+    if profile.get('prediction_unit') == 'line_corridor_area_risk':
+        raise ValueError('Corridor outage-risk exports are area-level and shown as a map layer; they are not line-failure probabilities')
     hours = profile.get('hours')
     if not isinstance(hours, list) or not 1 <= len(hours) <= 72:
         raise ValueError('weather.hours must contain 1–72 hourly records')

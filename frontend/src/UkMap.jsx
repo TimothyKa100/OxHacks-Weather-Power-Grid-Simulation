@@ -16,7 +16,12 @@ const DRAG_PX = 4;
 
 // Everything is drawn from the simulation clock t, not CSS transitions, so the
 // map always shows exactly the state at time t.
-export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect}) {
+// Corridor outage risk: log scale from 1e-4 to 0.3 (per hour, or per storm for totals).
+const RISK_LOW = '#3a2d5c';
+const RISK_HIGH = '#d08cff';
+export const riskLevel = p => Math.min(1, Math.max(0, (Math.log10(Math.max(p, 1e-4)) + 4) / (4 + Math.log10(0.3))));
+
+export default function UkMap({network, run, timeline, t, hardened=[], selected, onSelect, risk}) {
   const geo = useMemo(() => mapFrame(network.buses), [network]);
   const shapes = useMemo(() => {
     const index = new Map(network.buses.map((b, i) => [b.id, i]));
@@ -62,6 +67,7 @@ export default function UkMap({network, run, timeline, t, hardened=[], selected,
           pointerEvents="none"
         />
       )}
+      {risk && <CorridorRisk network={network} routes={shapes.routes} risk={risk} s={s} />}
       <Lines network={network} routes={shapes.routes} state={state} fadeStep={fadeStep} geo={geo} hardened={hardened} selected={selected} onSelect={onSelect} s={s} />
       <Buses network={network} positions={shapes.buses} state={state} fadeStep={fadeStep} s={s} />
       {run?.outages && timeline && <Outages outages={run.outages} times={timeline.outageTimes} geo={geo} t={layerTime(t)} s={s} />}
@@ -278,6 +284,22 @@ const Buses = memo(function Buses({network, positions, state, s=1}) {
     </g>
   );
 }, (a, b) => a.network === b.network && a.positions === b.positions && a.state?.i === b.state?.i && a.fadeStep === b.fadeStep && a.s === b.s);
+
+// Wide halos under each route: area-level outage risk in the line's corridor, separate from line state.
+const CorridorRisk = memo(function CorridorRisk({network, routes, risk, s=1}) {
+  return (
+    <g aria-hidden="true" pointerEvents="none">
+      {network.branches.map((e, i) => {
+        const level = riskLevel(risk[i] ?? 0);
+        if (level <= 0) return null;
+        return (
+          <polyline key={e.id} points={routes[i].points} fill="none" stroke={mix(RISK_LOW, RISK_HIGH, level)}
+            strokeOpacity={0.25 + 0.6 * level} strokeWidth={(3 + 7 * level) * s} strokeLinecap="round" strokeLinejoin="round" />
+        );
+      })}
+    </g>
+  );
+});
 
 // Where the outage feeds report at all: outside it, "no dots" means "no data".
 const Coverage = memo(function Coverage({coverage, geo}) {

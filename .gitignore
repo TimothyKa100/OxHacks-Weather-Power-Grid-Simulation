@@ -9,3 +9,23 @@ data/storms/.cache/
 # Built storm data stays local (rebuild with scripts/build_storm_benchmark.py); Darragh is the tracked example.
 data/storms/*.json
 !data/storms/darragh-2024.json
+
+# Refined grid/outage/weather collection from the dataRefininf archive (~18 GB): kept local.
+data/grid/
+data/processed/
+data/raw/
+data/temp/
+data/failure_model/v1/
+data/failure_model/v1_shepd/
+data/failure_model/*.json
+data/access_attempts.json
+data/manifest.json
+data/thresholds.json
+data/weather_config.json
+data/weather_manifest.json
+data/woodland_manifest.json
+data/woodland_extensions_manifest.json
+# GB line-corridor model: training rows and fetched inference weather are rebuilt locally.
+data/failure_model/gb_corridor/
+data/failure_model/gb_weather/
+data/failure_model/exports/*_storm-plan_comparison.json
