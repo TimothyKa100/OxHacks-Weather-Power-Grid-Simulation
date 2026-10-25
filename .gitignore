@@ -35,3 +35,8 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Generated storm caches
+data/storms/.cache/
+data/storms/*.json
+!data/storms/darragh-2024.json

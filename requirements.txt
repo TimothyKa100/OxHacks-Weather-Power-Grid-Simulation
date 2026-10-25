@@ -1,0 +1,3 @@
+# Shared atlas and simulator runtime
+-r requirements-map.txt
+scipy>=1.15,<2

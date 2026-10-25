@@ -75,7 +75,7 @@ def test_forecast_issue_time_cannot_follow_prediction_cutoff(net, profile):
         validate_profile(profile, net)
 
 
-def test_api_import_preserves_metadata_and_does_not_imply_gb_support(profile):
+def test_api_import_preserves_metadata_and_separates_gb_network(profile):
     client = app.test_client()
     response = client.post("/api/storm-plan", json={"scenario": "imported", "weather": profile, "samples": 16, "budget": 0})
     assert response.status_code == 200
@@ -83,7 +83,10 @@ def test_api_import_preserves_metadata_and_does_not_imply_gb_support(profile):
     assert data["portfolios"]["none"]["metrics"]["mean_failed_lines"] == 0
     assert data["weather"]["source"] == profile["source"]
     assert "Not implemented" in data["model"]["repairs"]
-    assert client.get("/api/network?name=gb").status_code == 400
+    gb = client.get("/api/network?name=gb")
+    assert gb.status_code == 200
+    assert gb.get_json()["network"] == "gb"
+    assert len(gb.get_json()["branches"]) != len(profile["branch_ids"])
     assert client.get("/api/network?name=ieee14").get_json()["network"] == "ieee14"
     bad = client.post("/api/storm-plan", json={"scenario": "imported", "weather": profile, "crews": 6})
     assert bad.status_code == 400

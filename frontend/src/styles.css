@@ -1,0 +1,256 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #f0efec;
+  background: #0d0f12;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #0d0f12;
+}
+
+.page {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  gap: 14px;
+}
+/* The map takes whatever height the panel leaves, so the page fits one screen. */
+.map-wrap {
+  flex: 1 1 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 260px;
+}
+.uk-map-zoom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+.uk-map-box {
+  position: relative;
+  height: 100%;
+  max-width: 100%;
+}
+.uk-map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+.uk-map:active {
+  cursor: grabbing;
+}
+.zoom-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zoom-controls button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  background: #253342;
+  border: 1px solid #46596d;
+  border-radius: 7px;
+  color: #e5edf4;
+  cursor: pointer;
+}
+.zoom-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.land {
+  vector-effect: non-scaling-stroke;
+  fill: #1c2128;
+  stroke: #3a434f;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.bus {
+  stroke: #0d0f12;
+  stroke-width: 0.6;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  width: 100%;
+  max-width: 640px;
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.controls select {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid #3a434f;
+  background: #1c2128;
+  color: #f0efec;
+}
+.simulate {
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 11px 32px;
+  border: 0;
+  border-radius: 999px;
+  background: #3987e5;
+  color: #fff;
+  cursor: pointer;
+}
+.simulate:hover:not(:disabled) {
+  background: #2a78d6;
+}
+.simulate:disabled,
+.controls select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.simulate:focus-visible,
+.controls select:focus-visible {
+  outline: 2px solid #f0efec;
+  outline-offset: 3px;
+}
+.progress {
+  width: 220px;
+  height: 3px;
+  border-radius: 2px;
+  background: #262b33;
+  overflow: hidden;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  background: #3987e5;
+}
+.storm-chart {
+  position: relative;
+  margin: 0;
+  width: 100%;
+}
+.storm-chart svg {
+  display: block;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 14px;
+  font-size: 12px;
+  color: #c3c2b7;
+  margin-bottom: 4px;
+}
+.chart-legend small {
+  color: #898781;
+}
+.storm-chart .tick {
+  fill: #898781;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.storm-chart .gridline {
+  stroke: #262b33;
+}
+.storm-chart .axis {
+  stroke: #3a434f;
+}
+.storm-chart .playhead {
+  stroke: #f0efec;
+  stroke-opacity: 0.7;
+}
+.storm-chart .hover-band {
+  fill: #ffffff;
+  opacity: 0.06;
+  pointer-events: none;
+}
+.chart-tip {
+  position: absolute;
+  top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #3a434f;
+  background: #1c2128;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.key {
+  display: inline-block;
+  width: 10px;
+  margin: 0 4px 0 0;
+  vertical-align: middle;
+}
+.key.bars {
+  height: 8px;
+  background: #ffd27a;
+  opacity: 0.8;
+}
+.key.line {
+  height: 2px;
+  background: #5da8bc;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.status {
+  margin: 0;
+  font-size: 14px;
+  color: #c3c2b7;
+  font-variant-numeric: tabular-nums;
+}
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: #898781;
+}
+.note.comparison {
+  line-height: 1.5;
+}
+.note.error {
+  color: #ef7a7a;
+}
+.credit {
+  margin: 0;
+  font-size: 10px;
+  color: #5f6670;
+}
+
+/* The GB map remains the main view; decision content scrolls below it. */
+.page{height:auto;min-height:100dvh;align-items:stretch}.map-wrap{height:58vh;min-height:330px;flex:none}.panel{align-self:center;max-width:900px}.planning{align-self:center;width:100%;max-width:1200px;background:#151a21;border:1px solid #303c49;border-radius:12px;padding:24px;line-height:1.6}.planning h2{font-size:22px;margin:16px 0}.planning h3{font-size:16px;margin:0 0 8px}.planning p{font-size:13px;color:#b7c7d5}.planning a{color:#a8dc81;margin-right:18px}.planning button,.playback-controls button{padding:8px 12px;background:#253342;border:1px solid #46596d;border-radius:7px;color:#e5edf4;cursor:pointer}.planning button:disabled{opacity:.5;cursor:wait}.audiences{display:flex;gap:10px;flex-wrap:wrap}.audiences .chosen{background:#38533a;border-color:#88b16b}.decision-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:20px 0}.decision-grid article,.asset-inspector{background:#1c2630;border-radius:8px;padding:18px}.decision-grid .simulate{display:block;margin-top:14px;background:#b5dd87;color:#182614}.table-scroll{overflow:auto;max-height:420px;margin:16px 0}table{border-collapse:collapse;width:100%;text-align:left;white-space:nowrap}th,td{font-size:12px;padding:10px;border-bottom:1px solid #33414d}th{position:sticky;top:0;background:#1c2630;font-weight:600}.selected-row{background:#293c32}.planning details{border-top:1px solid #35434f;padding:14px 0}.planning summary,.scenario-settings summary{cursor:pointer}.planning label,.financial-fields label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#c2cfda;margin:10px 0}.planning input[type=number],.planning select,.financial-fields input,.financial-fields select{background:#101820;color:#e6eef4;border:1px solid #4a5a68;border-radius:5px;padding:8px;max-width:320px;font:inherit}.financial-fields{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}.financial-fields input{width:150px}.financial-fields label{text-align:left}.playback-controls{display:flex;gap:10px;align-items:center;width:100%;font-size:12px}.playback-controls input{flex:1;min-width:60px}.scenario-settings{width:100%;font-size:13px}.pending{color:#ead291!important}.uk-map [role=button]{cursor:pointer}.uk-map [role=button]:focus-visible{outline:2px solid #b5dd87}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #b5dd87;outline-offset:3px}@media(max-width:760px){.decision-grid{grid-template-columns:1fr}.planning{padding:15px}.map-wrap{height:48vh;min-height:280px}.page{padding:10px}.playback-controls{flex-wrap:wrap}.financial-fields{gap:8px}.financial-fields input{width:125px}}
+.startup-error{max-width:700px;margin:10vh auto;padding:28px;line-height:1.7}.startup-error button{padding:10px 16px;cursor:pointer;background:#b5dd87;border:0;border-radius:6px;color:#182614}
