@@ -83,3 +83,25 @@ def test_split_is_chronological_purged_and_never_cuts_a_storm():
     for b in bounds.values():
         near = rows[(rows.timestamp_utc - b).abs() < pd.Timedelta(hours=25)]
         assert near.split.eq("purged").all()
+
+
+def test_rate_gust_baseline_uses_only_fit_rows_and_ranks_windy_hours_higher():
+    import numpy as np
+    import pandas as pd
+    from failure_model.gb_model import rate_gust_baseline
+
+    fit = pd.DataFrame({
+        "asset_id": ["A"] * 4 + ["B"] * 4,
+        "gust_max_kmh": [10., 10., 90., 90., 10., 10., 90., 90.],
+        "failed_next_hour": [0, 0, 1, 1, 0, 0, 0, 1],
+    })
+    frame = pd.DataFrame({"asset_id": ["A", "A", "B", "C"], "gust_max_kmh": [10., 90., 90., 90.],
+                          "failed_next_hour": [1, 1, 1, 1]})  # outcomes here must not matter
+    p = rate_gust_baseline(fit, frame)
+    overall = 3 / 8
+    windy_lift = (3 / 4) / overall
+    assert p[0] == 1e-7                                   # calm band never had an event in fitting
+    assert p[1] == np.clip(.5 * windy_lift, 1e-7, 1.)     # line A's rate x windy factor
+    assert p[2] == .25 * windy_lift                       # line B is quieter than A
+    assert p[3] == overall * windy_lift                   # unseen line falls back to the overall rate
+    assert p[1] > p[2] > p[0]

@@ -160,7 +160,8 @@ def v2_inference(net, exposure, dates):
     features = manifest['features'] if complete else manifest['reduced_features']
     sin, cos = _season(dates)
     q = np.full((len(rows), net.m), np.nan)
-    statics = {f: np.array([float(b.get(f) or 0.) for b in net.branches]) for f in ('length_km', 'ele_mean_m', 'ele_max_m', 'kv', 'circuits')}
+    # A missing property stays missing (NaN), as in training; it must not become a real-looking 0.
+    statics = {f: np.array([np.nan if b.get(f) is None else float(b[f]) for b in net.branches]) for f in ('length_km', 'ele_mean_m', 'ele_max_m', 'kv', 'circuits')}
     for t, w in enumerate(weather):
         values = {f: np.broadcast_to(np.asarray([np.nan if v is None else v for v in np.atleast_1d(w[f])] if w.get(f) is not None else np.nan, float), (net.m,))
                   for f in V2_WEATHER if f in w or f in features}

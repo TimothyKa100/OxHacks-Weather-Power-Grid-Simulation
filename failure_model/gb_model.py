@@ -60,6 +60,25 @@ def _model(depth, child_weight, features, seed):
                          eval_metric="logloss", random_state=seed)
 
 
+GUST_BANDS_KMH = [0, 40, 60, 80, 100, np.inf]
+
+
+def rate_gust_baseline(fit: pd.DataFrame, frame: pd.DataFrame) -> np.ndarray:
+    """A lookup-table baseline: each line's own fit-period event rate times a gust-band factor.
+
+    The factor is how much more (or less) often events happen in that band of route gust than
+    on average, measured on the fit rows only. Lines unseen in fitting get the overall rate.
+    Any model worth keeping has to beat this, not just a constant.
+    """
+    overall = float(fit.failed_next_hour.mean())
+    line_rate = fit.groupby("asset_id").failed_next_hour.mean()
+    band = lambda d: pd.cut(d.gust_max_kmh, GUST_BANDS_KMH, right=False, labels=False)
+    lift = (fit.groupby(band(fit)).failed_next_hour.mean() / overall) if overall > 0 else pd.Series(dtype=float)
+    rate = frame.asset_id.map(line_rate).fillna(overall).to_numpy(float)
+    factor = band(frame).map(lift).fillna(1.).to_numpy(float)
+    return np.clip(rate * factor, 1e-7, 1.)
+
+
 def fit_candidate(parts, features, depth, child_weight, seed):
     from sklearn.metrics import log_loss
     fit, tune = parts["fit"], parts["tune"]
@@ -200,7 +219,8 @@ def train(rows_path=OUTPUT / "rows.parquet", destination=MODEL_DIR, seed=26):
     report = {"calibrated_xgboost": evaluate(test, test.probability.to_numpy(), history_rate, seed),
               "uncalibrated_xgboost": evaluate(test, test.uncalibrated_probability.to_numpy(), history_rate, seed),
               "training_rate_baseline": metrics(test.failed_next_hour, np.full(len(test), history_rate)),
-              "wind_logistic_baseline": metrics(test.failed_next_hour, baseline.predict_proba(test[wind_features])[:, 1])}
+              "wind_logistic_baseline": metrics(test.failed_next_hour, baseline.predict_proba(test[wind_features])[:, 1]),
+              "line_rate_gust_band_baseline": metrics(test.failed_next_hour, rate_gust_baseline(fit, test))}
     for name, (other, other_info) in ablation.items():
         report[f"ablation_{name}_uncalibrated_test"] = metrics(test.failed_next_hour, other.predict_proba(test[other_info["features"]])[:, 1])
 

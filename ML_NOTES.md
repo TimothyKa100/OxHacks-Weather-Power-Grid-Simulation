@@ -173,3 +173,25 @@ I did not retrain v2; its saved benchmark is contaminated by problem 3 in any ca
 - **Grouped (non-independent) data.** Rows from the same line or the same storm resemble each other, so 1.8 million rows is nowhere near 1.8 million independent tests. Splits and confidence intervals should be built from whole groups.
 - **Baselines and ablations.** A model's score means nothing alone. You compare it with the simplest thing that could work, and you remove parts to see which ones matter.
 - **Monotonic constraints.** Telling the model a relationship can only go one way (more wind never lowers risk). It is a cheap way to add physical knowledge and it stops the model learning noise in sparse regions.
+
+## 9. Changes made on the `cleanup` branch (15 Nov 2026)
+
+The saved models in `demo_data/` are untouched. These changes affect code and any future retrain.
+
+| Change | Problem fixed | Effect on results |
+|---|---|---|
+| v2's calibrator is now chosen on the tuning period (`gb_v2.py`, `calibrator_selection` in the manifest) | 3 | **None on the choice.** I retrained v2 with the new rule: it still picks the seasonal calibrator (tune storm hours 25.1 expected against 24 observed, versus 21.6 for the plain sigmoid). The test period no longer takes part in any decision. |
+| The 367-branch training network is committed as `failure_model/assets/gb_network_training_0bb65f8.json`; `gb-dataset` builds on it and v2 no longer shells out to git | 9 | None. This is the network the saved rows were built on. |
+| Missing line properties stay NaN at inference (`backend/ml_risk.py`) | 10 | None today: no overhead branch in the current network is missing one. It was a latent bug. |
+| New baseline `line_rate_gust_band_baseline` in v1's evaluation report (`gb_model.rate_gust_baseline`), with a unit test | 6 | Adds a row to future reports. Measured value is in section 6. |
+
+v2 retrain on this machine, old test period (a benchmark, not a clean test, because v1's results on it shaped v2):
+
+| | Log loss | AP | Storm expected / observed | Quiet expected / observed |
+|---|---:|---:|---:|---:|
+| Saved in repo, seasonal calibrator | 0.006473 | 0.0781 | 929 / 950 | 1,394 / 1,058 |
+| My retrain, seasonal calibrator | 0.006477 | 0.0764 | 918 / 950 | 1,377 / 1,058 |
+| Saved in repo, plain sigmoid | 0.006501 | 0.0768 | 550 / 950 | 1,341 / 1,058 |
+| My retrain, plain sigmoid | 0.006506 | 0.0749 | 799 / 950 | 1,367 / 1,058 |
+
+One thing this exposed: the same code and seed stopped at 174 trees here and 255 in the saved model, and under the plain sigmoid the expected storm count moved from 550 to 799. The tuning loss is almost flat across tree counts (0.005026 against 0.005027), so early stopping lands somewhere different on a different machine. The seasonal calibrator is much more stable (929 against 918). I have not found the cause of the run-to-run difference; treat storm-hour totals from this model as uncertain by a wide margin.

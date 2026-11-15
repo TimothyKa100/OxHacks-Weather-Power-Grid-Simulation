@@ -40,6 +40,9 @@ VEGETATION = ["vegetation_fraction"]
 # Estimated from route length and voltage class: engineering assumptions, not measurements.
 DERIVED = ["pylons", "span_m", "tower_height_m"]
 OUTPUT = ROOT / "data/failure_model/gb_corridor"
+# The 367-branch network (commit 0bb65f8) that the saved models' rows were built on. The current
+# network has 673 branches and reuses the same IDs for different routes, so it is not a substitute.
+TRAINING_NETWORK = Path(__file__).resolve().parent / "assets/gb_network_training_0bb65f8.json"
 
 
 def load_network(path=None):
@@ -236,12 +239,12 @@ def storm_ids(hours, windows):
     return ids
 
 
-def build_dataset(output=OUTPUT):
+def build_dataset(output=OUTPUT, network=TRAINING_NETWORK):
     """Write one row per training-domain line x hour with features and failed_next_hour."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     to_bng = _bng()
-    lines = load_network()
+    lines = load_network(network)
     territory = ssen_territory(to_bng)
     table = corridors(lines, to_bng, territory)
     vegetation = vegetation_fractions(lines, to_bng)

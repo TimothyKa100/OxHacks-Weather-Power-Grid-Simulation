@@ -18,7 +18,6 @@ Same rows, target, split and purges as v1 (failure_model.gb_model). Changes:
 Usage: python -m failure_model gb-train-v2
 """
 import json
-import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +25,7 @@ import pandas as pd
 
 from .common import ROOT, data_path, now, sha256, write_json
 from .evaluation import metrics
-from .gb_lines import FEATURES as V1_FEATURES, OUTPUT
+from .gb_lines import FEATURES as V1_FEATURES, OUTPUT, TRAINING_NETWORK
 from .gb_model import RELIABILITY_EDGES, assign_split, boundaries, reliability
 
 VERSION = 'gb-corridor-xgb-v2'
@@ -83,7 +82,7 @@ def season_inputs(frame, margin):
 
 def training_routes(rows):
     """Route geometry (lon/lat) of the training lines, from the network version the rows used."""
-    old = json.loads(subprocess.check_output(['git', 'show', f'{TRAINED_ON}:data/gb_network.json'], cwd=ROOT))
+    old = json.loads(TRAINING_NETWORK.read_text())
     buses = old['buses']
     lon = np.array([b['lon'] for b in buses]); lat = np.array([b['lat'] for b in buses])
     x0, y0, y1 = lon.min(), lat.min(), lat.max()
@@ -143,8 +142,16 @@ def train(destination=MODEL_DIR, seed=26):
         benchmark[name] = {**{k: v for k, v in metrics(test.failed_next_hour, p).items() if k in ('log_loss', 'brier_score', 'average_precision', 'expected_events', 'events')},
                            **storm_check(test, p), 'inspection_recall_top10': inspection_recall(test, p), 'reliability': reliability(test.failed_next_hour.to_numpy(), p)}
     # Keep the calibrator whose storm and quiet totals are both closer to observed (log loss as tie-break).
+    # Judged on the tuning period: the calibrators were fitted on the calibration period, and the test
+    # period must not take part in any choice. (It used to be judged on the test period.)
     def gap(b): return abs(np.log(b['storm_expected']/b['storm_observed']))+abs(np.log(b['quiet_expected']/b['quiet_observed']))
-    calibrator = min(options, key=lambda k: (round(gap(benchmark[k]), 3), benchmark[k]['log_loss']))
+    margin_tu = full.predict(tune[full_features], output_margin=True)
+    tune_options = {'sigmoid': sigmoid.predict_proba(margin_tu.reshape(-1, 1))[:, 1],
+                    'seasonal_logistic': seasonal.predict_proba(season_inputs(tune, margin_tu))[:, 1]}
+    selection = {k: {**storm_check(tune, p), 'log_loss': float(log_loss(tune.failed_next_hour, p, labels=[0, 1]))}
+                 for k, p in tune_options.items()}
+    calibrator = min(tune_options, key=lambda k: (round(gap(selection[k]), 3), selection[k]['log_loss']))
+    would_have_chosen_on_test = min(options, key=lambda k: (round(gap(benchmark[k]), 3), benchmark[k]['log_loss']))
 
     destination.mkdir(parents=True, exist_ok=True)
     full.save_model(destination/'model_full.ubj'); reduced.save_model(destination/'model_reduced.ubj')
@@ -160,6 +167,7 @@ def train(destination=MODEL_DIR, seed=26):
     manifest = {'model_version': VERSION, 'created_utc': now(), 'chosen_feature_set': chosen, 'features': full_features,
                 'reduced_features': REDUCED, 'monotone_increasing': sorted(INCREASING), 'candidates': candidates,
                 'chosen_full': full_info, 'chosen_reduced': reduced_info, 'calibrator': calibrator,
+                'calibrator_selection': {'period': 'tune', 'scores': selection, 'choice_if_judged_on_test': would_have_chosen_on_test},
                 'split_boundaries_utc': {k: v.isoformat() for k, v in bounds.items()}, 'training_cutoff': bounds['calibrate'].isoformat(),
                 'target': 'P(new weather-caused SSEN overhead-line fault report inside the 5 km corridor during [t,t+1h))',
                 'interpretation': 'Area-level corridor outage risk; relative signal for the engineering-led hybrid, not transmission failure probability',
