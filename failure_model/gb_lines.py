@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .common import ROOT, now, write_json
+from .common import ROOT, data_path, now, write_json
 from .features import crosswind_envelope, weighted_percentile
 from .inventory import cell_key
 
@@ -42,9 +42,9 @@ DERIVED = ["pylons", "span_m", "tower_height_m"]
 OUTPUT = ROOT / "data/failure_model/gb_corridor"
 
 
-def load_network(path=ROOT / "data/gb_network.json"):
+def load_network(path=None):
     """Branches in API order with route coordinates recovered as lon/lat."""
-    network = json.loads(Path(path).read_text())
+    network = json.loads(Path(path or data_path("gb_network.json")).read_text())
     lon = np.array([b["lon"] for b in network["buses"]])
     lat = np.array([b["lat"] for b in network["buses"]])
     x0, y0, y1 = lon.min(), lat.min(), lat.max()

@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .common import ROOT, now, sha256, write_json
+from .common import ROOT, data_path, now, sha256, write_json
 from .evaluation import metrics
 from .gb_lines import FEATURES as V1_FEATURES, OUTPUT
 from .gb_model import RELIABILITY_EDGES, assign_split, boundaries, reliability
@@ -135,7 +135,7 @@ def train(destination=MODEL_DIR, seed=26):
     options = {'sigmoid': sigmoid.predict_proba(margin_te.reshape(-1, 1))[:, 1],
                'seasonal_logistic': seasonal.predict_proba(season_inputs(test, margin_te))[:, 1]}
     reduced_te = reduced_platt.predict_proba(reduced.predict(test[REDUCED], output_margin=True).reshape(-1, 1))[:, 1]
-    v1 = json.loads((ROOT/'data/failure_model/models/gb-corridor-xgb-v1/evaluation.json').read_text())['calibrated_xgboost']
+    v1 = json.loads(data_path('failure_model/models/gb-corridor-xgb-v1/evaluation.json').read_text())['calibrated_xgboost']
     benchmark = {'v1_saved': {k: v1[k] for k in ['log_loss', 'brier_score', 'average_precision', 'expected_events', 'events']}
                  | {'storm_expected': v1['storm_hours']['expected_events'], 'storm_observed': v1['storm_hours']['events'],
                     'quiet_expected': v1['quiet_hours']['expected_events'], 'quiet_observed': v1['quiet_hours']['events']}}
@@ -174,9 +174,9 @@ def train(destination=MODEL_DIR, seed=26):
     return manifest, benchmark
 
 
-def load(directory=MODEL_DIR):
+def load(directory=None):
     from xgboost import XGBClassifier
-    directory = Path(directory)
+    directory = Path(directory or data_path(f'failure_model/models/{VERSION}'))
     manifest = json.loads((directory/'model_manifest.json').read_text())
     for name, key in [('model_full.ubj', 'model_full_sha256'), ('calibration.json', 'calibration_sha256')]:
         data = (directory/name).read_bytes()
@@ -194,7 +194,7 @@ def calibrate(calibration, margin, frame):
     return expit(season_inputs(frame, margin)@np.asarray(c['coefficients'])+c['intercept'])
 
 
-def export_profile(start, hours, destination, directory=MODEL_DIR, name=None):
+def export_profile(start, hours, destination, directory=None, name=None):
     """Archived v2 predictions for a replay window on the current network (overhead routes only)."""
     from .gb_lines import ASSET_FEATURES, DERIVED, load_network, route_links
     from .gb_weather import fetch_window, load as load_weather

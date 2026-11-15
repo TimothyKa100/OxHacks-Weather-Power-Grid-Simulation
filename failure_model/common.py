@@ -8,6 +8,13 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "data/failure_model/v1"
+
+
+def data_path(relative: str) -> Path:
+    """A read-only input: the full local data/ tree if it has the file, else the committed demo_data/ copy."""
+    from backend.paths import DATA
+    full = ROOT / "data" / relative
+    return full if full.exists() else DATA / relative
 LOOKBACK_HOURS = 72
 HORIZON_HOURS = 1
 FEATURES = [

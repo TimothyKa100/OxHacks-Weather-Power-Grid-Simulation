@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .common import ROOT, now, sha256, write_json
+from .common import ROOT, data_path, now, sha256, write_json
 from .evaluation import metrics
 from .gb_lines import (ASSET_FEATURES, DERIVED, FEATURES, OUTPUT, VEGETATION, WEATHER_FEATURES,
                        line_features, load_network, route_links)
@@ -240,9 +240,9 @@ def train(rows_path=OUTPUT / "rows.parquet", destination=MODEL_DIR, seed=26):
     return manifest, report
 
 
-def load_model(directory=MODEL_DIR):
+def load_model(directory=None):
     from xgboost import XGBClassifier
-    directory = Path(directory)
+    directory = Path(directory or data_path(f"failure_model/models/{MODEL_VERSION}"))
     manifest = json.loads((directory / "model_manifest.json").read_text())
     calibration_bytes=(directory / "calibration.json").read_bytes()
     import hashlib
@@ -255,7 +255,7 @@ def load_model(directory=MODEL_DIR):
     return model, json.loads((directory / "calibration.json").read_text()), manifest
 
 
-def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=None, name=None, paired=False):
+def export_profile(start, hours, destination, directory=None, branch_ids=None, name=None, paired=False):
     """Weather/ML JSON for POST /api/storm-plan: one calibrated probability per branch and hour."""
     from .gb_weather import fetch_window, load
     model, calibration, manifest = load_model(directory)
@@ -267,7 +267,7 @@ def export_profile(start, hours, destination, directory=MODEL_DIR, branch_ids=No
     reference=None
     if paired:
         from .reference import predict as reference_predict
-        ref_path=Path(directory)/'reference_model.json'
+        ref_path=Path(directory or data_path(f'failure_model/models/{MODEL_VERSION}'))/'reference_model.json'
         if not ref_path.exists() or not manifest.get('reference_sha256'):
             raise ValueError('This model has no fitted weather-aware reference. Retrain to a new version; no constant-rate substitute is permitted.')
         if sha256(ref_path)!=manifest['reference_sha256']: raise ValueError('Reference checksum mismatch')

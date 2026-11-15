@@ -97,17 +97,17 @@ def main():
                            ["rows", "events", "expected_events", "brier_score", "log_loss", "average_precision",
                             "brier_skill_vs_training_rate"]}}
     elif args.command == "gb-export":
-        from .gb_model import MODEL_DIR, export_profile
+        from .gb_model import export_profile
         order = None
         if args.api:
             import requests
             order = [b["id"] for b in requests.get(args.api.rstrip("/") + "/api/network", params={"name": "gb"},
                                                    timeout=30).json()["branches"]]
         if args.v2:
-            from .gb_v2 import MODEL_DIR as V2_DIR, export_profile as export_v2
-            profile = export_v2(args.start, args.hours, args.destination, args.model_dir or V2_DIR, args.name)
+            from .gb_v2 import export_profile as export_v2
+            profile = export_v2(args.start, args.hours, args.destination, args.model_dir, args.name)
         else:
-            profile = export_profile(args.start, args.hours, args.destination, args.model_dir or MODEL_DIR, order, args.name, args.paired)
+            profile = export_profile(args.start, args.hours, args.destination, args.model_dir, order, args.name, args.paired)
         p = [x for h in profile["hours"] for x in h["full_probability" if args.paired else "failure_probability"] if x is not None]
         result = {"destination": str(args.destination), "hours": len(profile["hours"]), "branches": len(profile["branch_ids"]),
                   "mean_probability": sum(p) / len(p), "max_probability": max(p)}

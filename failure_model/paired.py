@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.special import expit
-from .common import write_json,sha256
+from .common import data_path,write_json,sha256
 from .gb_lines import FEATURES
 from .reference import fit as fit_reference, predict as reference_predict, calibrator, REFERENCE_FEATURES
 from .evaluation import metrics
@@ -92,7 +92,7 @@ def export(features,directory,destination,network_path=None):
     calibration=json.loads((directory/'calibration.json').read_text()); ref=json.loads((directory/'reference_model.json').read_text())
     features=features.copy(); features['timestamp_utc']=pd.to_datetime(features.timestamp_utc,utc=True)
     if features.duplicated(['asset_id','timestamp_utc']).any(): raise ValueError('Duplicate inference asset-hour')
-    network_path=network_path or Path(__file__).resolve().parents[1]/'data/gb_network.json'
+    network_path=network_path or data_path('gb_network.json')
     ids=[e['id'] for e in json.loads(Path(network_path).read_text())['branches']]
     if set(features.asset_id)!=set(ids): raise ValueError('Inference rows must cover exactly the network branches')
     features['full_probability']=expit(calibration['coefficient']*model.predict(features[m['features']],output_margin=True)+calibration['intercept'])

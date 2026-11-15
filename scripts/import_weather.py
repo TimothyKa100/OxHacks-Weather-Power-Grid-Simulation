@@ -9,11 +9,12 @@ import json
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from backend.paths import DATA
 from backend.weather import validate_weather
 
 
 def convert(path, source):
-    benchmark=json.loads((Path(__file__).resolve().parents[1]/'data/ieee14.json').read_text())
+    benchmark=json.loads((DATA/'ieee14.json').read_text())
     ids=[e['id'] for e in benchmark['branches']]
     grouped={}
     with open(path,newline='') as stream:

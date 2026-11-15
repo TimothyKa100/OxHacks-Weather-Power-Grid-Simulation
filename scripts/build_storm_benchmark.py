@@ -30,6 +30,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from backend.paths import DATA  # noqa: E402
+
 STORMS_DIR = ROOT/'data/storms'
 CACHE_DIR = STORMS_DIR/'.cache'
 DEFAULT_CSV = ROOT/'data/outages/unplanned_outages.csv'
@@ -163,7 +166,7 @@ def build(storm, feeds):
     coverage = sorted(coverage)
 
     # Weather grid: every 0.25 degree point over GB land that matters (near coverage or the grid).
-    network = json.loads((ROOT/'data/gb_network.json').read_text(encoding='utf-8'))
+    network = json.loads((DATA/'gb_network.json').read_text(encoding='utf-8'))
     near = {cell(lon+dx*COVERAGE_CELL, lat+dy*COVERAGE_CELL, GRID) for b in network['buses']
             for lon, lat in [(b['lon'], b['lat'])] for dx in (-3, 0, 3) for dy in (-3, 0, 3)}
     near |= {cell((cx+.5)*COVERAGE_CELL, (cy+.5)*COVERAGE_CELL, GRID) for cx, cy in coverage}
