@@ -36,7 +36,7 @@ The completed run and remaining data dependencies are recorded in [FAILURE_PIPEL
 Install into the project virtual environment:
 
 ```bash
-.venv/bin/python -m pip install -r requirements-model.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 ```
 
 Run from the repository root. The `--output` option goes before the subcommand. Feature generation resumes completed months only when all input/configuration fingerprints agree; `--rebuild` replaces only the generated feature and label partitions in that output directory.

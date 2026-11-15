@@ -1,4 +1,5 @@
 """One storm-plan chain: ML into the hybrid, cascade, mitigations, restoration, recommendation."""
+import pytest
 import json
 import os
 import subprocess
@@ -11,6 +12,7 @@ from backend.simulation import Network, recommend
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.slow
 def test_chain_runs_every_stage_and_restoration_lets_repairs_act():
     net = Network('gb')
     result = run_storm_plan(net, peak_gust=190, hours=6, seed=7, samples=16, budget=2, recovery_hours=24)

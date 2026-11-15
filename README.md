@@ -35,7 +35,7 @@ The network has 478 buses and 673 branches at 132–400 kV, built from OpenStree
 
 ## Run it
 
-Needs Python 3.10+ and Node 20.19+.
+Needs Python 3.11+ and Node 20.19+.
 
 ```bash
 python -m venv .venv
@@ -49,7 +49,7 @@ Open http://127.0.0.1:5001 and press **Simulate & compare**. Everything the demo
 Tests:
 
 ```bash
-.venv/bin/python -m pip install -r requirements-dev.txt -r requirements-model.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 npm test --prefix frontend
 ```

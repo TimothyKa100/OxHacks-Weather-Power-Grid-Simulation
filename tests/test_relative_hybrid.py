@@ -112,6 +112,7 @@ def test_line_damage_causes_node_outages_and_repairs_restore_service():
     assert result['failed_lines']==result['repairs']==net.m
 
 
+@pytest.mark.slow
 def test_automatic_hybrid_api_produces_real_line_and_node_failures_and_replays():
     client=app.test_client()
     response=client.post('/api/storm-plan',json=dict(failure_mode='hybrid',peak_gust=190,hours=12,seed=7,samples=16,budget=1))

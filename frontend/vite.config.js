@@ -7,7 +7,7 @@ const proxy = {'/api': 'http://127.0.0.1:5001'};
 export default defineConfig({
   server: {
     proxy,
-    // The offline fallback imports ../data/sample_storm.json from the repo root.
+    // The offline fallback imports ../demo_data/sample_storm.json from the repo root.
     fs: {allow: ['..']},
   },
   preview: {proxy},

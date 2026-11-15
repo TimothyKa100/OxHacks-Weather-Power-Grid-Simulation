@@ -58,6 +58,7 @@ def test_real_sampler_uses_combined_probability_and_hardens_afterwards():
     assert d['uniform_draw'][1]==.25
 
 
+@pytest.mark.slow
 def test_api_comparison_beta_zero_and_rerun():
     ids=[e['id'] for e in nets['gb'].branches]
     weather,pair=fixtures(ids)

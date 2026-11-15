@@ -50,6 +50,6 @@ export const fetchRiskLayers = () => request('/api/corridor-risk', {}, 5000);
 export const fetchRiskLayer = id => request(`/api/corridor-risk?id=${encodeURIComponent(id)}`, {}, 30000);
 
 export async function loadSample() {
-  const module = await import('../../data/sample_storm.json');
+  const module = await import('../../demo_data/sample_storm.json');
   return module.default;
 }

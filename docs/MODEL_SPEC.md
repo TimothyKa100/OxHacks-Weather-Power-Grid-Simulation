@@ -242,7 +242,7 @@ line failures; it does not identify which real transmission assets broke.
 ## Run and reproduce
 
 ```
-python -m pip install -r requirements-model.txt -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 python -m failure_model.paired train rows.parquet config/transmission_model_contract.json data/failure_model/models/transmission-pair-v1
 python -m failure_model.paired export inference_features.parquet data/failure_model/models/transmission-pair-v1 paired.json
 python scripts/benchmark_hybrid.py --output docs/results/hybrid_sensitivity.json

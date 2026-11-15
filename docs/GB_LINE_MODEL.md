@@ -324,7 +324,7 @@ which lines break.
 ## Reproduce
 
 ```bash
-.venv/bin/python -m pip install -r requirements-model.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m failure_model gb-dataset
 .venv/bin/python -m failure_model gb-train
 .venv/bin/python -m failure_model gb-train-v2
