@@ -44,17 +44,17 @@ npm ci --prefix frontend
 .venv/bin/python scripts/serve_preview.py
 ```
 
-Open http://127.0.0.1:5001 and press **Simulate & compare**. Everything the demo needs is in `demo_data/`; no downloads or API keys.
+Open http://127.0.0.1:5001 and press **Simulate & compare**. Everything the demo needs is in `demo_data/`; no downloads, API keys or environment variables. With `make`, the same thing is `make install` then `make run`.
 
 Tests:
 
 ```bash
 .venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q
-npm test --prefix frontend
+make test        # fast tests, about a minute
+make test-all    # adds three full-storm simulations, about 8 minutes
 ```
 
-Retraining the model needs an 18 GB data archive that is not in this repository. See [ML_NOTES.md](ML_NOTES.md).
+`make train` rebuilds the dataset and retrains both models with a fixed seed. It needs an 18 GB data archive that is not in this repository; see [ML_NOTES.md](ML_NOTES.md).
 
 ## The ML model, and what it can and cannot do
 
